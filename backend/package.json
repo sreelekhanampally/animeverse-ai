@@ -1,0 +1,33 @@
+{
+  "name": "animeverse-ai-backend",
+  "version": "1.0.0",
+  "description": "AnimeVerse AI backend — anime video + community platform with AI features",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "keywords": ["animeverse", "youtube-clone", "ai", "mern"],
+  "author": "Sreelekha Nampally",
+  "license": "ISC",
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "prettier": "^3.9.4"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cloudinary": "^2.10.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.24.1",
+    "mongoose-aggregate-paginate-v2": "^1.1.4",
+    "multer": "^2.2.0",
+    "openai": "^4.68.0"
+  }
+}

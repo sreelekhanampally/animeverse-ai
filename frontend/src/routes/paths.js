@@ -1,0 +1,18 @@
+export const PATHS = {
+    home: "/",
+    trending: "/trending",
+    community: "/community",
+    subscriptions: "/subscriptions",
+    playlists: "/playlists",
+    history: "/history",
+    liked: "/liked",
+    watchLater: "/watch-later",
+    aiSearch: "/ai/search",
+    aiChat: "/ai/chat",
+    settings: "/settings",
+    login: "/login",
+    register: "/register",
+    forgotPassword: "/forgot-password",
+    resetPassword: "/reset-password",
+    notFound: "*",
+};
