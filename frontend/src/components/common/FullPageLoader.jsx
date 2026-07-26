@@ -8,7 +8,7 @@ export function FullPageLoader() {
                     <div className="h-14 w-14 animate-[spin_1.4s_linear_infinite] rounded-full border-2 border-white/10 border-t-primary" />
                     <Sparkles className="absolute inset-0 m-auto h-6 w-6 text-accent" />
                 </div>
-                <p className="font-display text-sm text-muted">Summoning AnimeVerse…</p>
+                <p className="font-display text-sm text-muted">Summoning AnimeVerse...</p>
             </div>
         </div>
     );

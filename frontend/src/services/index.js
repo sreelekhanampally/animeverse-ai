@@ -4,7 +4,7 @@ export { apiClient, extractErrorMessage, onUnauthorized } from "./apiClient";
 export { authService } from "./authService";
 export { videoService } from "./videoService";
 
-/* Additional resource services — thin wrappers around the backend API */
+/* Additional resource services  -  thin wrappers around the backend API */
 
 export const commentService = {
     list: (videoId, params) => apiClient.get(`/comments/${videoId}`, { params }),
@@ -49,7 +49,7 @@ export const dashboardService = {
     videos: () => apiClient.get("/dashboard/videos"),
 };
 
-/* AI service — scaffolded for future sessions, not called in this session. */
+/* AI service  -  scaffolded for future sessions, not called in this session. */
 export const aiService = {
     health: () => apiClient.get("/ai/health"),
     search: (q, limit = 20) => apiClient.get("/ai/search", { params: { q, limit } }),

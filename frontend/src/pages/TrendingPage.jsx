@@ -19,7 +19,7 @@ export default function TrendingPage() {
                 onRetry={refetch}
                 skeletonCount={12}
                 emptyTitle="Nothing trending right now"
-                emptyMessage="Check back in a bit — the world is quiet."
+                emptyMessage="Check back in a bit  -  the world is quiet."
             />
         </div>
     );

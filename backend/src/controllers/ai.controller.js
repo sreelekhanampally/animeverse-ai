@@ -68,7 +68,7 @@ export const semanticSearch = asyncHandler(async (req, res) => {
 
     const queryEmbedding = await embedText(q);
 
-    // Load candidates — for scale, replace with a vector DB (Pinecone/pgvector).
+    // Load candidates  -  for scale, replace with a vector DB (Pinecone/pgvector).
     // Here we do in-memory cosine on published videos (limit 500 for safety).
     const candidates = await Video.find({ isPublished: true })
         .select("+embedding title description thumbnail views duration owner tags category createdAt")
@@ -176,7 +176,7 @@ export const transcribe = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(200, result, "OK"));
 });
 
-// POST /api/v1/ai/videos/:videoId/reindex  — owner-only reindex
+// POST /api/v1/ai/videos/:videoId/reindex   -  owner-only reindex
 export const reindexVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
     if (!isValidObjectId(videoId)) throw new ApiError(400, "Invalid video id");

@@ -173,7 +173,7 @@ ${comments.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
 // ---------- Transcription (Whisper) ----------
 export async function transcribeAudio(localFilePath, { lang } = {}) {
     const c = getClient();
-    if (!c) return { text: "(AI stub) transcription unavailable — set OPENAI_API_KEY.", language: lang || "en" };
+    if (!c) return { text: "(AI stub) transcription unavailable  -  set OPENAI_API_KEY.", language: lang || "en" };
     const resp = await c.audio.transcriptions.create({
         model: TRANSCRIBE_MODEL,
         file: fs.createReadStream(localFilePath),

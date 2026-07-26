@@ -33,7 +33,7 @@ export function AuthLayout() {
                         Enter the <span className="gradient-text">AnimeVerse</span>.
                     </h1>
                     <p className="mt-4 max-w-md text-base text-muted">
-                        Watch. Discuss. Discover. A social video platform built for anime fans —
+                        Watch. Discuss. Discover. A social video platform built for anime fans -
                         with an AI companion that actually understands your taste.
                     </p>
 

@@ -79,7 +79,7 @@ export function Navbar() {
                         <input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
-                            placeholder="Search anime, creators, communities…"
+                            placeholder="Search anime, creators, communities..."
                             className="h-11 w-full rounded-full border border-white/10 bg-white/[0.04] pl-11 pr-24 text-sm text-white placeholder:text-muted/70 outline-none transition focus:border-primary/60 focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(124,58,237,0.15)]"
                             aria-label="Search"
                         />

@@ -60,7 +60,7 @@ export default function SettingsPage() {
                         </CardTitle>
                     </CardHeader>
                     <p className="text-sm text-muted">
-                        Choose what pings you — uploads, replies, mentions.
+                        Choose what pings you  -  uploads, replies, mentions.
                     </p>
                 </Card>
             </div>

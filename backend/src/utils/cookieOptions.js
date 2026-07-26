@@ -1,4 +1,4 @@
-// Shared cookie options — secure in production, permissive in dev.
+// Shared cookie options  -  secure in production, permissive in dev.
 export const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

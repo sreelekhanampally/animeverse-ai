@@ -128,7 +128,7 @@ export default function RegisterPage() {
                     <Input
                         label="Password"
                         type="password"
-                        placeholder="••••••••"
+                        placeholder="--------"
                         leftIcon={<Lock className="h-4 w-4" />}
                         autoComplete="new-password"
                         error={errors.password?.message}
@@ -137,7 +137,7 @@ export default function RegisterPage() {
                     <Input
                         label="Confirm"
                         type="password"
-                        placeholder="••••••••"
+                        placeholder="--------"
                         leftIcon={<Lock className="h-4 w-4" />}
                         autoComplete="new-password"
                         error={errors.confirmPassword?.message}

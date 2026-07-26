@@ -410,7 +410,7 @@ const updateVideo = asyncHandler(async (req, res) => {
     let oldThumbnail = null;
 
     if (thumbnailLocalPath) {
-        // Capture OLD thumbnail before swapping — critical bug fix
+        // Capture OLD thumbnail before swapping  -  critical bug fix
         oldThumbnail = video.thumbnail;
 
         const uploadedThumbnail = await uploadOnCloudinary(thumbnailLocalPath);

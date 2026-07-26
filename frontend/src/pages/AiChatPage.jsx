@@ -8,7 +8,7 @@ export default function AiChatPage() {
             <SectionHeader
                 icon={Bot}
                 title="AI Chat"
-                subtitle="Talk to the AnimeVerse companion — coming soon."
+                subtitle="Talk to the AnimeVerse companion  -  coming soon."
             />
             <EmptyState
                 icon={Sparkles}

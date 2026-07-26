@@ -10,7 +10,7 @@ const app = express();
 // Security headers
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
-// CORS — supports comma-separated list in CORS_ORIGIN
+// CORS  -  supports comma-separated list in CORS_ORIGIN
 const allowedOrigins = (process.env.CORS_ORIGIN || "*")
     .split(",")
     .map((o) => o.trim());
@@ -32,7 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(express.static("public"));
 app.use(cookieParser());
 
-// Global rate limit — 300 req / 15 min per IP
+// Global rate limit  -  300 req / 15 min per IP
 app.use(
     rateLimit({
         windowMs: 15 * 60 * 1000,

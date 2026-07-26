@@ -28,7 +28,7 @@ export const verifyJWT = asyncHandler(async (req, _, next) => {
     }
 });
 
-// Optional auth — sets req.user if a valid token is present, otherwise continues anonymously.
+// Optional auth  -  sets req.user if a valid token is present, otherwise continues anonymously.
 export const optionalJWT = asyncHandler(async (req, _, next) => {
     try {
         const token = extractToken(req);

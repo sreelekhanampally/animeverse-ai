@@ -56,7 +56,7 @@ export default function HomePage() {
                     onRetry={() => trending.refetch()}
                     skeletonCount={8}
                     emptyTitle="No trends today"
-                    emptyMessage="Check back soon — the algorithm is warming up."
+                    emptyMessage="Check back soon  -  the algorithm is warming up."
                 />
             </section>
 

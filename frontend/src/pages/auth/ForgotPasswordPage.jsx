@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
             setSubmitted(true);
         } catch (e) {
             const msg = extractErrorMessage(e, "Unable to send reset link");
-            // Endpoint may not be implemented yet — succeed silently to avoid enumeration.
+            // Endpoint may not be implemented yet  -  succeed silently to avoid enumeration.
             if (e?.response?.status === 404) {
                 setSubmitted(true);
             } else {

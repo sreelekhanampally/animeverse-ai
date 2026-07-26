@@ -36,7 +36,7 @@ export function HeroBanner() {
                         Your Neural Gateway to <span className="gradient-text">Every Anime Universe</span>
                     </h1>
                     <p className="mt-3 max-w-xl text-sm text-white/75 sm:text-base">
-                        Stream, discuss, and discover — with a companion AI that knows lore, tropes, and the
+                        Stream, discuss, and discover  -  with a companion AI that knows lore, tropes, and the
                         exact frame you're trying to find.
                     </p>
                     <div className="mt-6 flex flex-wrap items-center gap-3">
