@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Play, MoreVertical, Sparkles } from "lucide-react";
+import { Play, MoreVertical, Sparkles, BadgeCheck, ThumbsUp } from "lucide-react";
 import { LazyImage } from "@/components/common/LazyImage";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatViews, formatDuration, timeAgo } from "@/utils/format";
@@ -8,9 +8,13 @@ import { cn } from "@/utils/cn";
 
 /**
  * Backend-friendly shape (all optional):
- *  { _id, title, thumbnail, duration, views, createdAt, owner: { username, avatar, fullName } }
+ *  {
+ *    _id, title, thumbnail, duration, views, likesCount, createdAt,
+ *    owner: { username, avatar, fullName, verified },
+ *    isAiCurated
+ *  }
  */
-export function VideoCard({ video, className, compact = false }) {
+export function VideoCard({ video, className, compact = false, onMenuClick }) {
     if (!video) return null;
 
     const {
@@ -19,12 +23,14 @@ export function VideoCard({ video, className, compact = false }) {
         thumbnail,
         duration,
         views,
+        likesCount,
         createdAt,
         owner,
         isAiCurated,
     } = video;
 
     const to = `/watch/${_id}`;
+    const isVerified = owner?.verified || owner?.isVerified;
 
     return (
         <motion.article
@@ -43,24 +49,17 @@ export function VideoCard({ video, className, compact = false }) {
                         wrapperClassName="absolute inset-0"
                         className="scale-100 transition-transform duration-500 group-hover:scale-[1.04]"
                     />
-
-                    {/* Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-90" />
-
-                    {/* Duration */}
                     {duration != null && (
                         <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur">
                             {formatDuration(duration)}
                         </span>
                     )}
-
                     {isAiCurated && (
                         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent backdrop-blur">
                             <Sparkles className="h-3 w-3" /> AI Pick
                         </span>
                     )}
-
-                    {/* Play hover */}
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/90 shadow-glow">
                             <Play className="ml-0.5 h-6 w-6 text-white" fill="currentColor" />
@@ -71,7 +70,11 @@ export function VideoCard({ video, className, compact = false }) {
 
             {!compact && (
                 <div className="flex items-start gap-3 px-1">
-                    <Link to={owner?.username ? `/c/${owner.username}` : "#"} className="shrink-0">
+                    <Link
+                        to={owner?.username ? `/c/${owner.username}` : "#"}
+                        className="shrink-0"
+                        onClick={(e) => !owner?.username && e.preventDefault()}
+                    >
                         <Avatar
                             size="sm"
                             src={owner?.avatar}
@@ -84,10 +87,18 @@ export function VideoCard({ video, className, compact = false }) {
                                 {title || "Untitled"}
                             </h3>
                         </Link>
-                        <div className="mt-1 truncate text-xs text-muted">
-                            {owner?.fullName || owner?.username || "AnimeVerse Creator"}
+                        <div className="mt-1 flex items-center gap-1 truncate text-xs text-muted">
+                            <span className="truncate">
+                                {owner?.fullName || owner?.username || "AnimeVerse Creator"}
+                            </span>
+                            {isVerified && (
+                                <BadgeCheck
+                                    className="h-3.5 w-3.5 shrink-0 text-accent"
+                                    aria-label="Verified creator"
+                                />
+                            )}
                         </div>
-                        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted">
                             <span>{formatViews(views)} views</span>
                             {createdAt && (
                                 <>
@@ -95,10 +106,21 @@ export function VideoCard({ video, className, compact = false }) {
                                     <span>{timeAgo(createdAt)}</span>
                                 </>
                             )}
+                            {likesCount != null && (
+                                <>
+                                    <span className="h-1 w-1 rounded-full bg-muted/60" />
+                                    <span className="inline-flex items-center gap-1">
+                                        <ThumbsUp className="h-3 w-3" /> {formatViews(likesCount)}
+                                    </span>
+                                </>
+                            )}
                         </div>
                     </div>
                     <button
-                        onClick={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            onMenuClick?.(video, e);
+                        }}
                         className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
                         aria-label="More options"
                     >

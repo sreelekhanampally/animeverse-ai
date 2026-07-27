@@ -4,13 +4,15 @@ export { apiClient, extractErrorMessage, onUnauthorized } from "./apiClient";
 export { authService } from "./authService";
 export { videoService } from "./videoService";
 
-/* Additional resource services  -  thin wrappers around the backend API */
+/* Additional resource services — thin wrappers around the backend API */
 
 export const commentService = {
     list: (videoId, params) => apiClient.get(`/comments/${videoId}`, { params }),
-    add: (videoId, content) => apiClient.post(`/comments/${videoId}`, { content }),
+    add: (videoId, content, parentId) =>
+        apiClient.post(`/comments/${videoId}`, parentId ? { content, parentId } : { content }),
     update: (commentId, content) => apiClient.patch(`/comments/c/${commentId}`, { content }),
     remove: (commentId) => apiClient.delete(`/comments/c/${commentId}`),
+    replies: (commentId, params) => apiClient.get(`/comments/c/${commentId}/replies`, { params }),
 };
 
 export const likeService = {
@@ -36,6 +38,18 @@ export const playlistService = {
     remove: (id) => apiClient.delete(`/playlist/${id}`),
 };
 
+export const historyService = {
+    list: () => apiClient.get("/users/history"),
+    /**
+     * The backend records watch history when a video is fetched by id.
+     * These aliases exist so the frontend can call them intentionally
+     * without adding new endpoints.
+     */
+    track: (videoId) => apiClient.get(`/videos/${videoId}`),
+    remove: (videoId) => apiClient.delete(`/users/history/${videoId}`).catch(() => null),
+    clear: () => apiClient.delete(`/users/history`).catch(() => null),
+};
+
 export const tweetService = {
     list: (params) => apiClient.get("/tweets", { params }),
     userTweets: (userId) => apiClient.get(`/tweets/user/${userId}`),
@@ -49,7 +63,7 @@ export const dashboardService = {
     videos: () => apiClient.get("/dashboard/videos"),
 };
 
-/* AI service  -  scaffolded for future sessions, not called in this session. */
+/* AI service — scaffolded for future sessions, not called in this session. */
 export const aiService = {
     health: () => apiClient.get("/ai/health"),
     search: (q, limit = 20) => apiClient.get("/ai/search", { params: { q, limit } }),

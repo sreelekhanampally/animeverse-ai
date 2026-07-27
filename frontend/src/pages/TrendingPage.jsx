@@ -1,10 +1,10 @@
 import { Flame } from "lucide-react";
 import { SectionHeader } from "@/features/home/SectionHeader";
-import { VideoGrid } from "@/features/video/VideoGrid";
-import { useTrendingVideos } from "@/features/video/hooks";
+import { InfiniteVideoGrid } from "@/features/video/InfiniteVideoGrid";
+import { useInfiniteVideos } from "@/features/video/hooks";
 
 export default function TrendingPage() {
-    const { data, isLoading, error, refetch } = useTrendingVideos({ limit: 24 });
+    const query = useInfiniteVideos({ sortBy: "views", sortType: "desc" });
     return (
         <div className="space-y-6">
             <SectionHeader
@@ -12,14 +12,10 @@ export default function TrendingPage() {
                 title="Trending"
                 subtitle="What the AnimeVerse is watching right now."
             />
-            <VideoGrid
-                videos={data}
-                isLoading={isLoading}
-                error={error}
-                onRetry={refetch}
-                skeletonCount={12}
+            <InfiniteVideoGrid
+                query={query}
                 emptyTitle="Nothing trending right now"
-                emptyMessage="Check back in a bit  -  the world is quiet."
+                emptyMessage="Check back in a bit — the world is quiet."
             />
         </div>
     );
