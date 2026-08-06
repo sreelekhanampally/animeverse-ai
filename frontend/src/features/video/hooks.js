@@ -56,6 +56,71 @@ export function useContinueWatching() {
     });
 }
 
+/* ---------------- Watch history (full) ---------------- */
+
+export function useWatchHistory() {
+    return useQuery({
+        queryKey: ["watch-history"],
+        queryFn: async () => unwrapList(await historyService.list()),
+    });
+}
+
+export function useRemoveFromHistory() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: (videoId) => historyService.remove(videoId),
+        onMutate: async (videoId) => {
+            await qc.cancelQueries({ queryKey: ["watch-history"] });
+            await qc.cancelQueries({ queryKey: ["videos", "continue-watching"] });
+            const prevHistory = qc.getQueryData(["watch-history"]);
+            const prevContinue = qc.getQueryData(["videos", "continue-watching"]);
+            if (Array.isArray(prevHistory)) {
+                qc.setQueryData(
+                    ["watch-history"],
+                    prevHistory.filter((v) => (v?._id || v?.videoId) !== videoId)
+                );
+            }
+            if (Array.isArray(prevContinue)) {
+                qc.setQueryData(
+                    ["videos", "continue-watching"],
+                    prevContinue.filter((v) => (v?._id || v?.videoId) !== videoId)
+                );
+            }
+            return { prevHistory, prevContinue };
+        },
+        onError: (_e, _v, ctx) => {
+            if (ctx?.prevHistory) qc.setQueryData(["watch-history"], ctx.prevHistory);
+            if (ctx?.prevContinue)
+                qc.setQueryData(["videos", "continue-watching"], ctx.prevContinue);
+        },
+        onSettled: () => {
+            qc.invalidateQueries({ queryKey: ["watch-history"] });
+            qc.invalidateQueries({ queryKey: ["videos", "continue-watching"] });
+        },
+    });
+}
+
+export function useClearHistory() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: () => historyService.clear(),
+        onMutate: async () => {
+            await qc.cancelQueries({ queryKey: ["watch-history"] });
+            const prev = qc.getQueryData(["watch-history"]);
+            qc.setQueryData(["watch-history"], []);
+            qc.setQueryData(["videos", "continue-watching"], []);
+            return { prev };
+        },
+        onError: (_e, _v, ctx) => {
+            if (ctx?.prev) qc.setQueryData(["watch-history"], ctx.prev);
+        },
+        onSettled: () => {
+            qc.invalidateQueries({ queryKey: ["watch-history"] });
+            qc.invalidateQueries({ queryKey: ["videos", "continue-watching"] });
+        },
+    });
+}
+
 export function useBasedOnLikes({ limit = PAGE_SIZE } = {}) {
     return useQuery({
         queryKey: ["videos", "based-on-likes", limit],

@@ -12,9 +12,11 @@ const TrendingPage = lazy(() => import("@/pages/TrendingPage.jsx"));
 const CommunityPage = lazy(() => import("@/pages/CommunityPage.jsx"));
 const SubscriptionsPage = lazy(() => import("@/pages/SubscriptionsPage.jsx"));
 const PlaylistsPage = lazy(() => import("@/pages/PlaylistsPage.jsx"));
+const PlaylistDetailPage = lazy(() => import("@/pages/PlaylistDetailPage.jsx"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage.jsx"));
 const LikedPage = lazy(() => import("@/pages/LikedPage.jsx"));
 const WatchLaterPage = lazy(() => import("@/pages/WatchLaterPage.jsx"));
+const WatchPage = lazy(() => import("@/pages/WatchPage.jsx"));
 const AiSearchPage = lazy(() => import("@/pages/AiSearchPage.jsx"));
 const AiChatPage = lazy(() => import("@/pages/AiChatPage.jsx"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage.jsx"));
@@ -34,11 +36,13 @@ export function AppRoutes() {
                     <Route path={PATHS.home} element={<HomePage />} />
                     <Route path={PATHS.trending} element={<TrendingPage />} />
                     <Route path={PATHS.community} element={<CommunityPage />} />
+                    <Route path="/watch/:videoId" element={<WatchPage />} />
 
                     {/* Protected sections */}
                     <Route element={<ProtectedRoute />}>
                         <Route path={PATHS.subscriptions} element={<SubscriptionsPage />} />
                         <Route path={PATHS.playlists} element={<PlaylistsPage />} />
+                        <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
                         <Route path={PATHS.history} element={<HistoryPage />} />
                         <Route path={PATHS.liked} element={<LikedPage />} />
                         <Route path={PATHS.watchLater} element={<WatchLaterPage />} />
