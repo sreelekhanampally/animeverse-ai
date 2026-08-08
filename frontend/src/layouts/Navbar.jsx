@@ -110,7 +110,12 @@ export function Navbar() {
                 <div className="flex items-center gap-2">
                     {user ? (
                         <>
-                            <Button variant="ghost" size="sm" className="hidden md:inline-flex">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="hidden md:inline-flex"
+                                onClick={() => navigate(PATHS.upload)}
+                            >
                                 <Upload className="h-4 w-4" />
                                 Upload
                             </Button>

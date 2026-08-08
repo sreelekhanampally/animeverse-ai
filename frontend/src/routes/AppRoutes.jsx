@@ -17,6 +17,7 @@ const HistoryPage = lazy(() => import("@/pages/HistoryPage.jsx"));
 const LikedPage = lazy(() => import("@/pages/LikedPage.jsx"));
 const WatchLaterPage = lazy(() => import("@/pages/WatchLaterPage.jsx"));
 const WatchPage = lazy(() => import("@/pages/WatchPage.jsx"));
+const UploadVideoPage = lazy(() => import("@/pages/UploadVideoPage.jsx"));
 const AiSearchPage = lazy(() => import("@/pages/AiSearchPage.jsx"));
 const AiChatPage = lazy(() => import("@/pages/AiChatPage.jsx"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage.jsx"));
@@ -46,6 +47,7 @@ export function AppRoutes() {
                         <Route path={PATHS.history} element={<HistoryPage />} />
                         <Route path={PATHS.liked} element={<LikedPage />} />
                         <Route path={PATHS.watchLater} element={<WatchLaterPage />} />
+                        <Route path={PATHS.upload} element={<UploadVideoPage />} />
                         <Route path={PATHS.aiSearch} element={<AiSearchPage />} />
                         <Route path={PATHS.aiChat} element={<AiChatPage />} />
                         <Route path={PATHS.settings} element={<SettingsPage />} />

@@ -7,6 +7,7 @@ export const PATHS = {
     history: "/history",
     liked: "/liked",
     watchLater: "/watch-later",
+    upload: "/upload",
     aiSearch: "/ai/search",
     aiChat: "/ai/chat",
     settings: "/settings",
