@@ -23,33 +23,47 @@ const toggleSubscription = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Channel not found");
     }
 
-    const subscribed = await Subscription.findOne({
+    // Atomic toggle. The previous version read with findOne() and then wrote,
+    // so two concurrent requests could both see "not subscribed" and both
+    // insert. deleteOne() reports whether it actually removed anything, so the
+    // decision and the write happen in a single operation.
+    const { deletedCount } = await Subscription.deleteOne({
         subscriber: req.user._id,
         channel: channelId
     });
 
-    if (subscribed) {
-        await subscribed.deleteOne();
+    let isSubscribed;
 
-        return res.status(200).json(
-            new ApiResponse(
-                200,
-                {},
-                "Channel unsubscribed successfully"
-            )
-        );
+    if (deletedCount > 0) {
+        isSubscribed = false;
+    } else {
+        try {
+            await Subscription.create({
+                subscriber: req.user._id,
+                channel: channelId
+            });
+        } catch (error) {
+            // 11000 = duplicate key on the unique (subscriber, channel) index.
+            // Another in-flight request already created it, so the user is
+            // subscribed either way — that is not an error worth surfacing.
+            if (error?.code !== 11000) throw error;
+        }
+        isSubscribed = true;
     }
 
-    await Subscription.create({
-        subscriber: req.user._id,
+    // Recount from the collection so the client can trust this number instead
+    // of maintaining its own counter.
+    const subscribersCount = await Subscription.countDocuments({
         channel: channelId
     });
 
-    return res.status(201).json(
+    return res.status(isSubscribed ? 201 : 200).json(
         new ApiResponse(
-            201,
-            {},
-            "Channel subscribed successfully"
+            isSubscribed ? 201 : 200,
+            { isSubscribed, subscribersCount },
+            isSubscribed
+                ? "Channel subscribed successfully"
+                : "Channel unsubscribed successfully"
         )
     );
 });

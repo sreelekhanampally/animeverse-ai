@@ -6,8 +6,17 @@ import {
 } from "@tanstack/react-query";
 import { videoService, likeService, historyService } from "@/services";
 import { unwrapList, unwrapPagination, unwrapData } from "@/utils/unwrap";
+import { useAuthStore } from "@/store/authStore";
 
 const PAGE_SIZE = 12;
+
+/**
+ * Some rows need a session: /users/history and /likes/videos are verifyJWT-only.
+ * Firing them as a guest returned 401s, which also tripped the apiClient's
+ * refresh-token retry. Reading the store directly (rather than useAuth) keeps
+ * these hooks usable outside the AuthProvider-consuming tree.
+ */
+const useIsAuthed = () => !!useAuthStore((s) => s.user);
 
 /* ---------------- Single-page hooks ---------------- */
 
@@ -43,25 +52,31 @@ export function useRecentUploads({ limit = PAGE_SIZE } = {}) {
 }
 
 export function useLikedVideos() {
+    const authed = useIsAuthed();
     return useQuery({
         queryKey: ["videos", "liked"],
         queryFn: async () => unwrapList(await likeService.likedVideos()),
+        enabled: authed, // /likes/videos requires a session
     });
 }
 
 export function useContinueWatching() {
+    const authed = useIsAuthed();
     return useQuery({
         queryKey: ["videos", "continue-watching"],
         queryFn: async () => unwrapList(await historyService.list()),
+        enabled: authed, // never attempt watch history as a guest
     });
 }
 
 /* ---------------- Watch history (full) ---------------- */
 
 export function useWatchHistory() {
+    const authed = useIsAuthed();
     return useQuery({
         queryKey: ["watch-history"],
         queryFn: async () => unwrapList(await historyService.list()),
+        enabled: authed, // never attempt watch history as a guest
     });
 }
 
@@ -122,8 +137,10 @@ export function useClearHistory() {
 }
 
 export function useBasedOnLikes({ limit = PAGE_SIZE } = {}) {
+    const authed = useIsAuthed();
     return useQuery({
         queryKey: ["videos", "based-on-likes", limit],
+        enabled: authed, // reads /likes/videos first, which requires a session
         queryFn: async () => {
             const liked = unwrapList(await likeService.likedVideos());
             if (!liked.length) {

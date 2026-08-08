@@ -124,20 +124,13 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 subscribersCount: {
                     $size: "$subscribers"
                 },
-                isLiked: {
-                    $cond: {
-                        if: {
-                            $ifNull: [req.user?._id, false]
-                        },
-                        then: {
-                            $in: [
-                                req.user._id,
-                                "$likes.likedBy"
-                            ]
-                        },
-                        else: false
-                    }
-                }
+                // For a guest there is no req.user, so `req.user._id` inside the
+                // $cond would throw a TypeError while this object is being built
+                // in JS — the $cond never reaches MongoDB. Guests get a literal
+                // false instead; logged-in users get the real membership test.
+                isLiked: req.user?._id
+                    ? { $in: [req.user._id, "$likes.likedBy"] }
+                    : false
             }
         },
         {
@@ -326,15 +319,11 @@ const getVideoById = asyncHandler(async (req, res) => {
         },
         {
             $addFields: {
-                isLiked: {
-                    $cond: {
-                        if: { $ifNull: [req.user?._id, false] },
-                        then: {
-                            $in: [req.user._id, "$likes.likedBy"]
-                        },
-                        else: false
-                    }
-                }
+                // Same guest-safety fix as getAllVideos: build the $in only when
+                // a user is actually present.
+                isLiked: req.user?._id
+                    ? { $in: [req.user._id, "$likes.likedBy"] }
+                    : false
             }
         },
         {
