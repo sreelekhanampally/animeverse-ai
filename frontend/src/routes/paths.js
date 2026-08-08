@@ -18,3 +18,6 @@ export const PATHS = {
     resetPassword: "/reset-password",
     notFound: "*",
 };
+
+/** Channel pages are dynamic, so they're a builder rather than a constant. */
+export const channelPath = (username) => `/c/${username}`;

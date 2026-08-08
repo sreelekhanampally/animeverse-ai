@@ -19,6 +19,7 @@ const WatchLaterPage = lazy(() => import("@/pages/WatchLaterPage.jsx"));
 const WatchPage = lazy(() => import("@/pages/WatchPage.jsx"));
 const UploadVideoPage = lazy(() => import("@/pages/UploadVideoPage.jsx"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage.jsx"));
+const ChannelPage = lazy(() => import("@/pages/ChannelPage.jsx"));
 const AiSearchPage = lazy(() => import("@/pages/AiSearchPage.jsx"));
 const AiChatPage = lazy(() => import("@/pages/AiChatPage.jsx"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage.jsx"));
@@ -39,6 +40,8 @@ export function AppRoutes() {
                     <Route path={PATHS.trending} element={<TrendingPage />} />
                     <Route path={PATHS.community} element={<CommunityPage />} />
                     <Route path="/watch/:videoId" element={<WatchPage />} />
+                    {/* Public: /users/c/:username uses optionalJWT, so guests can browse channels */}
+                    <Route path="/c/:username" element={<ChannelPage />} />
 
                     {/* Protected sections */}
                     <Route element={<ProtectedRoute />}>
