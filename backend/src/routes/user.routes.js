@@ -14,7 +14,7 @@ import {
 } from "../controllers/user.controller.js";
 
 import { upload } from "../middlewares/multer.middleware.js";
-import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { verifyJWT, optionalJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router()
 
@@ -39,7 +39,9 @@ router.route("/update-account").patch(verifyJWT, updateAccountDetails)
 router.route("/update-avatar").patch(verifyJWT, upload.single("avatar"), updateUserAvatar)
 router.route("/update-coverImage").patch(verifyJWT, upload.single("coverImage"), updateUserCoverImage)
 //when req.params is used
-router.route("/c/:username").get(verifyJWT, getUserChannelProfile)
+// optionalJWT: channel pages are publicly viewable. When a token is present
+// req.user is set so isSubscribed is accurate; guests simply get false.
+router.route("/c/:username").get(optionalJWT, getUserChannelProfile)
 
 router.route("/history").get(verifyJWT, getWatchHistory)
 

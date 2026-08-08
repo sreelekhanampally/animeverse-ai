@@ -484,6 +484,11 @@ const getUserChannelProfile = asyncHandler(async (req,res) => {
                     channelsSubscribedToCount:1,
                     avatar:1,
                     coverImage:1,
+                    // isSubscribed was already computed above but never projected,
+                    // so the client could not show the correct subscribe state.
+                    isSubscribed:1,
+                    // Real join date for the channel's About tab.
+                    createdAt:1,
                 }
             }
         ])
