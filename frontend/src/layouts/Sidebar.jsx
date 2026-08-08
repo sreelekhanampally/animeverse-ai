@@ -9,6 +9,7 @@ import {
     History,
     ThumbsUp,
     Clock,
+    LayoutDashboard,
     Sparkles,
     Bot,
     Settings,
@@ -31,6 +32,10 @@ const LIBRARY_ITEMS = [
     { to: PATHS.history, label: "History", icon: History },
     { to: PATHS.liked, label: "Liked Videos", icon: ThumbsUp },
     { to: PATHS.watchLater, label: "Watch Later", icon: Clock },
+];
+
+const CREATOR_ITEMS = [
+    { to: PATHS.dashboard, label: "Dashboard", icon: LayoutDashboard },
 ];
 
 const AI_ITEMS = [
@@ -102,6 +107,10 @@ function SidebarNav({ collapsed, onNavigate }) {
             ))}
             {!collapsed && <SectionLabel>Library</SectionLabel>}
             {LIBRARY_ITEMS.map((it) => (
+                <Item key={it.to} {...it} collapsed={collapsed} onNavigate={onNavigate} />
+            ))}
+            {!collapsed && <SectionLabel>Creator</SectionLabel>}
+            {CREATOR_ITEMS.map((it) => (
                 <Item key={it.to} {...it} collapsed={collapsed} onNavigate={onNavigate} />
             ))}
             {!collapsed && <SectionLabel>Intelligence</SectionLabel>}

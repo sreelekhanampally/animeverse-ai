@@ -8,6 +8,7 @@ export const PATHS = {
     liked: "/liked",
     watchLater: "/watch-later",
     upload: "/upload",
+    dashboard: "/dashboard",
     aiSearch: "/ai/search",
     aiChat: "/ai/chat",
     settings: "/settings",
