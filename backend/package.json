@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "ingest:anime": "node src/scripts/ingestAnime.js",
+    "ingest:youtube": "node src/scripts/ingestYouTube.js"
   },
   "keywords": ["animeverse", "youtube-clone", "ai", "mern"],
   "author": "Sreelekha Nampally",

@@ -172,6 +172,26 @@ export default function UploadVideoPage() {
 
     const [errors, setErrors] = useState({});
     const [uploading, setUploading] = useState(false);
+    /**
+     * Synchronous duplicate-submit guard.
+     *
+     * `uploading` alone is not sufficient: setState is asynchronous, so two clicks
+     * dispatched in the same tick both read the old `false` and both fire a POST —
+     * which is how a single file became several Video documents. A ref flips
+     * immediately, closing that window. This mirrors the pattern EditVideoModal
+     * already uses, so the codebase stays consistent.
+     */
+    const submittingRef = useRef(false);
+    /**
+     * Bytes-sent percentage, or null when it can't be computed.
+     *
+     * Two distinct phases matter here and conflating them misleads the user: this
+     * only tracks the browser -> server transfer. Once it reaches 100% the server
+     * is still relaying the file to Cloudinary, which on a large video takes a
+     * noticeable while longer, so the UI says "processing" rather than claiming
+     * the upload is done.
+     */
+    const [uploadPct, setUploadPct] = useState(null);
 
     // Object URLs for previews, revoked on change/unmount to avoid leaks.
     const [videoPreview, setVideoPreview] = useState(null);
@@ -261,11 +281,15 @@ export default function UploadVideoPage() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (uploading) return; // guard against duplicate submissions
+        // Ref first: it is already true for a second click in the same tick, before
+        // React has re-rendered the disabled button.
+        if (submittingRef.current || uploading) return;
         if (!validate()) {
             toast.error("Please fix the highlighted fields");
             return;
         }
+        // Claimed only after validation passes, so a rejected submit can be retried.
+        submittingRef.current = true;
 
         // Field names must match the backend multer fields: videoFile, thumbnail.
         const formData = new FormData();
@@ -278,11 +302,19 @@ export default function UploadVideoPage() {
         tags.forEach((tag) => formData.append("tags", tag));
 
         setUploading(true);
+        setUploadPct(0);
         try {
             // Reuses the existing service function as-is. Axios strips the
             // manual Content-Type for FormData in the browser, so the multipart
             // boundary is generated automatically.
-            const response = await videoService.publish(formData);
+            const response = await videoService.publish(formData, {
+                onUploadProgress: (event) => {
+                    // `total` is absent on some proxies/browsers; fall back to the
+                    // indeterminate bar instead of showing a bogus percentage.
+                    if (!event.total) return setUploadPct(null);
+                    setUploadPct(Math.round((event.loaded / event.total) * 100));
+                },
+            });
 
             const created = unwrapData(response);
             const videoId = created?._id;
@@ -304,7 +336,12 @@ export default function UploadVideoPage() {
                 submit: extractErrorMessage(err, "Couldn't publish your video"),
             }));
         } finally {
+            // Reset on BOTH paths. If the ref were only cleared on error, a
+            // successful upload that failed to navigate would leave the form
+            // permanently unsubmittable.
+            submittingRef.current = false;
             setUploading(false);
+            setUploadPct(null);
         }
     };
 
@@ -510,20 +547,43 @@ export default function UploadVideoPage() {
                         <div className="flex items-center gap-3">
                             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-accent" />
                             <div className="min-w-0 flex-1">
-                                <div className="mb-1.5 text-xs font-medium text-white">
-                                    Uploading to Cloudinary — please keep this tab open
+                                <div className="mb-1.5 flex items-center justify-between gap-3 text-xs font-medium text-white">
+                                    <span>
+                                        {uploadPct === null
+                                            ? "Uploading — please keep this tab open"
+                                            : uploadPct < 100
+                                              ? "Uploading — please keep this tab open"
+                                              : "Transfer complete — processing on Cloudinary"}
+                                    </span>
+                                    {uploadPct !== null && uploadPct < 100 && (
+                                        <span className="shrink-0 tabular-nums text-muted">
+                                            {uploadPct}%
+                                        </span>
+                                    )}
                                 </div>
-                                {/* Indeterminate: byte-level progress would require passing an
-                                    onUploadProgress config through videoService.publish. */}
+                                {/* Determinate once axios reports total bytes; the indeterminate
+                                    bar is kept as the fallback for when it doesn't. */}
                                 <div
                                     className="h-1.5 w-full overflow-hidden rounded-full bg-white/10"
                                     role="progressbar"
-                                    aria-label="Upload in progress"
+                                    aria-label="Upload progress"
+                                    aria-valuenow={uploadPct ?? undefined}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
                                 >
-                                    <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-primary to-accent" />
+                                    {uploadPct === null || uploadPct >= 100 ? (
+                                        <div className="h-full w-full animate-pulse rounded-full bg-gradient-to-r from-primary to-accent" />
+                                    ) : (
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-primary to-accent transition-[width] duration-200"
+                                            style={{ width: `${uploadPct}%` }}
+                                        />
+                                    )}
                                 </div>
                                 <p className="mt-1.5 text-xs text-muted">
-                                    Large videos can take a while to transfer and process.
+                                    {uploadPct !== null && uploadPct >= 100
+                                        ? "Almost done — Cloudinary is still processing the file. This can take a minute for large videos."
+                                        : "Large videos can take a while to transfer and process."}
                                 </p>
                             </div>
                         </div>
