@@ -540,7 +540,17 @@ const getWatchHistory = asyncHandler(async (req, res) => {
                         $addFields: {   // <-- addFields (plural)
                             owner: {
                                 $first: "$owner"
-                            }
+                            },
+                            // Watch history renders the same video cards, so it gets
+                            // the same source normalisation for legacy documents.
+                            sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                            externalVideoId: { $ifNull: ["$externalVideoId", ""] }
+                        }
+                    },
+                    {
+                        $project: {
+                            __v: 0,
+                            embedding: 0
                         }
                     }
                 ]

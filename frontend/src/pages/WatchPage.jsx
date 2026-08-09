@@ -65,9 +65,18 @@ export default function WatchPage() {
                     </>
                 ) : (
                     <>
+                        {/*
+                          * The player picks its own implementation from sourceType.
+                          * Everything below this line — title, creator, likes,
+                          * comments, subscriptions, watch history, suggestions — is
+                          * source-agnostic and needed no changes.
+                          */}
                         <VideoPlayer
+                            sourceType={video.sourceType}
+                            externalVideoId={video.externalVideoId}
                             src={video.videoFile || video.videoUrl}
                             poster={video.thumbnail}
+                            title={video.title}
                         />
                         <h1 className="font-display text-xl font-semibold leading-snug text-white sm:text-2xl">
                             {video.title}

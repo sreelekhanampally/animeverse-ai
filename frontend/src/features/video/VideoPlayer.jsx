@@ -12,7 +12,93 @@ import {
 import { cn } from "@/utils/cn";
 import { formatDuration } from "@/utils/format";
 
-export function VideoPlayer({ src, poster, onEnded, onProgress, className }) {
+/**
+ * A YouTube ID is 11 chars of [A-Za-z0-9_-]. Validating before building the URL
+ * keeps a malformed/empty value from producing an iframe that renders YouTube's
+ * own error screen inside our player chrome, and stops anything user-supplied
+ * from being interpolated into the embed URL.
+ */
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+
+export const isValidYouTubeId = (id) =>
+    typeof id === "string" && YOUTUBE_ID_RE.test(id.trim());
+
+/**
+ * Official YouTube embed (youtube-nocookie for privacy). The ID is encoded and
+ * the video is *streamed by YouTube* — never downloaded, proxied or re-hosted.
+ */
+export const buildYouTubeEmbedUrl = (id) =>
+    `https://www.youtube-nocookie.com/embed/${encodeURIComponent(
+        String(id).trim()
+    )}?rel=0&modestbranding=1&playsinline=1`;
+
+/**
+ * Renders the YouTube-hosted case. This is deliberately a separate branch from
+ * the HTML5 path below: an <iframe> exposes no currentTime/buffered/volume to
+ * this origin, so the custom control bar cannot drive it. Re-using that bar would
+ * mean shipping controls that silently do nothing. YouTube's own controls are
+ * used instead, which is also what the embed terms expect.
+ */
+function YouTubeEmbed({ externalVideoId, title, className }) {
+    const valid = isValidYouTubeId(externalVideoId);
+
+    return (
+        <div
+            className={cn(
+                "relative aspect-video w-full overflow-hidden rounded-2xl border border-white/5 bg-black shadow-2xl",
+                className
+            )}
+        >
+            {valid ? (
+                <iframe
+                    key={externalVideoId}
+                    src={buildYouTubeEmbedUrl(externalVideoId)}
+                    title={title || "YouTube video player"}
+                    className="absolute inset-0 h-full w-full"
+                    // Standard YouTube embed permissions; no autoplay.
+                    allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                    loading="lazy"
+                />
+            ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-6 text-center text-white">
+                    <AlertCircle className="h-8 w-8 text-rose-400" />
+                    <div className="text-sm">This video is unavailable.</div>
+                    <div className="text-xs text-muted">
+                        The external video reference is missing or invalid.
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Source-aware entry point. Kept as a thin dispatcher on purpose: the HTML5 path
+ * below owns ~10 hooks, so branching *inside* one component would change the hook
+ * order whenever a user navigated from a Cloudinary video to a YouTube one (the
+ * element position on WatchPage is reused across route params). Splitting the two
+ * branches into separate components makes that transition an unmount/mount and
+ * keeps each branch's hooks stable.
+ *
+ * Anything that isn't explicitly "youtube" — including a legacy document — falls
+ * through to the original HTML5 player, unchanged.
+ */
+export function VideoPlayer({ sourceType = "cloudinary", externalVideoId, title, ...rest }) {
+    if (sourceType === "youtube") {
+        return (
+            <YouTubeEmbed
+                externalVideoId={externalVideoId}
+                title={title}
+                className={rest.className}
+            />
+        );
+    }
+    return <Html5VideoPlayer {...rest} />;
+}
+
+function Html5VideoPlayer({ src, poster, onEnded, onProgress, className }) {
     const videoRef = useRef(null);
     const containerRef = useRef(null);
     const [playing, setPlaying] = useState(false);

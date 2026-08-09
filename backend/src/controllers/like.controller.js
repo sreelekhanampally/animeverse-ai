@@ -186,8 +186,17 @@ const getLikedVideos = asyncHandler(async (req, res) => {
                         }
                     },
                     {
+                        $addFields: {
+                            // Normalise the source for legacy documents here too,
+                            // so every list that renders video cards agrees.
+                            sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                            externalVideoId: { $ifNull: ["$externalVideoId", ""] }
+                        }
+                    },
+                    {
                         $project: {
-                            __v: 0
+                            __v: 0,
+                            embedding: 0
                         }
                     }
                 ]

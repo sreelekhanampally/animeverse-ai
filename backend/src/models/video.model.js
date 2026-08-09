@@ -1,9 +1,45 @@
 import mongoose, { Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
+export const VIDEO_SOURCE_TYPES = ["cloudinary", "youtube"];
+
 const videoSchema = new Schema(
     {
-        videoFile: { type: String, required: true },
+        /**
+         * Where the playable media lives.
+         *
+         * "cloudinary" — a creator-uploaded file; `videoFile` holds the Cloudinary
+         *                secure_url and is played by the HTML5 <video> element.
+         * "youtube"    — an externally hosted video played through YouTube's own
+         *                official embed; `externalVideoId` holds the YouTube ID and
+         *                `videoFile` stays empty. Nothing is downloaded or re-hosted.
+         *
+         * The default keeps every pre-existing document (which has no sourceType
+         * field at all) behaving exactly as before.
+         */
+        sourceType: {
+            type: String,
+            enum: VIDEO_SOURCE_TYPES,
+            default: "cloudinary",
+            index: true,
+        },
+
+        // Only meaningful when sourceType === "youtube" (e.g. "dQw4w9WgXcQ").
+        externalVideoId: { type: String, default: "" },
+
+        /**
+         * `required` is now a function rather than `true`. Mongoose evaluates it with
+         * `this` bound to the document, so a Cloudinary video still cannot be saved
+         * without a file, while a YouTube video is allowed to have none. Making this
+         * unconditionally required would make YouTube documents unsavable; dropping
+         * the requirement entirely would let a broken Cloudinary upload through.
+         */
+        videoFile: {
+            type: String,
+            required: function () {
+                return this.sourceType !== "youtube";
+            },
+        },
         thumbnail: { type: String, required: true },
         title: { type: String, required: true },
         description: { type: String, required: true },
@@ -11,6 +47,20 @@ const videoSchema = new Schema(
         views: { type: Number, default: 0 },
         isPublished: { type: Boolean, default: true },
         owner: { type: Schema.Types.ObjectId, ref: "User" },
+
+        /**
+         * Optional link to the canonical anime this video is about (an AMV of
+         * Attack on Titan, a review of Frieren...). Optional and null by default:
+         * a video is perfectly valid without one, and every existing creator
+         * upload keeps working untouched. Indexed sparsely because most documents
+         * will hold null and a sparse index skips those entirely.
+         */
+        anime: {
+            type: Schema.Types.ObjectId,
+            ref: "Anime",
+            default: null,
+            index: { sparse: true },
+        },
 
         // --- AI enrichment fields ---
         tags: { type: [String], default: [], index: true },
@@ -21,6 +71,43 @@ const videoSchema = new Schema(
         embedding: { type: [Number], default: [], select: false },
     },
     { timestamps: true }
+);
+
+/**
+ * The counterpart to the conditional `videoFile` requirement above: a YouTube
+ * video is unplayable without its ID, so reject it at the model boundary rather
+ * than letting a document that can never render reach the database.
+ *
+ * This is a path validator on `externalVideoId` (not a pre-save hook) so it also
+ * runs for `Model.create`, `save`, and `findOneAndUpdate` with `runValidators`.
+ * Legacy Cloudinary documents are untouched: for them the branch is a no-op.
+ */
+videoSchema.path("externalVideoId").validate(function () {
+    if (this.sourceType !== "youtube") return true;
+    return typeof this.externalVideoId === "string" && this.externalVideoId.trim().length > 0;
+}, "externalVideoId is required when sourceType is 'youtube'");
+
+/**
+ * Prevents the same YouTube video from being imported twice.
+ *
+ * A plain unique index on { sourceType, externalVideoId } cannot be used here: the
+ * pre-existing Cloudinary documents have no `externalVideoId` field at all, so they
+ * would all index as { "cloudinary", null } and collide with each other. Creating
+ * such an index against the live collection fails outright with E11000 (verified).
+ *
+ * The partial filter narrows the index to YouTube documents that actually carry a
+ * string id, so Cloudinary documents are not indexed at all and are completely
+ * unaffected — any number of them may exist with no externalVideoId.
+ */
+videoSchema.index(
+    { sourceType: 1, externalVideoId: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            sourceType: "youtube",
+            externalVideoId: { $type: "string" },
+        },
+    }
 );
 
 // Text search across title + description

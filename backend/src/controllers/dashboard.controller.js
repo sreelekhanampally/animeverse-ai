@@ -115,14 +115,22 @@ const getChannelVideos = asyncHandler(async (req, res) => {
                 },
                 commentsCount: {
                     $size: "$comments"
-                }
+                },
+                // Same normalisation as the video controller so the dashboard
+                // reports a source for legacy documents too (a Mongoose default
+                // does not backfill aggregation output).
+                sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                externalVideoId: { $ifNull: ["$externalVideoId", ""] }
             }
         },
         {
             $project: {
                 likes: 0,
                 comments: 0,
-                __v: 0
+                __v: 0,
+                // `select: false` on the schema does not apply to aggregation, so
+                // this internal vector was being returned to the client.
+                embedding: 0
             }
         },
         {

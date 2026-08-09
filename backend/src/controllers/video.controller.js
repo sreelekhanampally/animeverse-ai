@@ -130,7 +130,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 // false instead; logged-in users get the real membership test.
                 isLiked: req.user?._id
                     ? { $in: [req.user._id, "$likes.likedBy"] }
-                    : false
+                    : false,
+                // Documents created before external sources existed have no
+                // sourceType field at all. A Mongoose `default` only applies when
+                // a document is created through the model — it does NOT backfill
+                // aggregation output — so the fallback has to happen here, or the
+                // client would receive `undefined` and have to guess.
+                sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                externalVideoId: { $ifNull: ["$externalVideoId", ""] }
             }
         },
         {
@@ -138,7 +145,11 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 likes: 0,
                 comments: 0,
                 subscribers: 0,
-                __v: 0
+                __v: 0,
+                // The schema marks `embedding` select:false, but aggregation
+                // bypasses that, so this 32-float internal vector was being sent to
+                // every client on every listing. Excluded to honour that intent.
+                embedding: 0
             }
         },
         {
@@ -196,6 +207,11 @@ const publishAVideo = asyncHandler(async (req, res) => {
     const video = await Video.create({
         title: title.trim(),
         description: description.trim(),
+        // Creator uploads are, and remain, Cloudinary-hosted. This is stated
+        // explicitly rather than leaning on the schema default so the intent
+        // survives any future change to that default. This route never accepts a
+        // YouTube URL — external ingestion is a separate system.
+        sourceType: "cloudinary",
         videoFile: uploadedVideo.secure_url,
         thumbnail: uploadedThumbnail.secure_url,
         duration: uploadedVideo.duration || 0,
@@ -323,14 +339,21 @@ const getVideoById = asyncHandler(async (req, res) => {
                 // a user is actually present.
                 isLiked: req.user?._id
                     ? { $in: [req.user._id, "$likes.likedBy"] }
-                    : false
+                    : false,
+                // Same backfill as getAllVideos: the watch page is the one consumer
+                // that must know which player to render, so it can never see a
+                // missing sourceType on a legacy document.
+                sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                externalVideoId: { $ifNull: ["$externalVideoId", ""] }
             }
         },
         {
             $project: {
                 likes: 0,
                 comments: 0,
-                subscribers: 0
+                subscribers: 0,
+                __v: 0,
+                embedding: 0
             }
         }
     ]);
@@ -445,11 +468,14 @@ const deleteVideo = asyncHandler(async (req, res) => {
         throw new ApiError(403, "You are not authorized to delete this video");
     }
 
-    const videoPublicId = getPublicIdFromUrl(video.videoFile);
-    const thumbnailPublicId = getPublicIdFromUrl(video.thumbnail);
+    // Only Cloudinary-hosted media is ours to destroy. A YouTube-sourced video has
+    // an empty videoFile and its media belongs to YouTube, so we skip the asset
+    // delete and only remove our own document (and our own thumbnail).
+    if (video.sourceType !== "youtube" && video.videoFile) {
+        await deleteFromCloudinary(getPublicIdFromUrl(video.videoFile), "video");
+    }
 
-    await deleteFromCloudinary(videoPublicId, "video");
-    await deleteFromCloudinary(thumbnailPublicId);
+    await deleteFromCloudinary(getPublicIdFromUrl(video.thumbnail));
 
     await video.deleteOne();
 
