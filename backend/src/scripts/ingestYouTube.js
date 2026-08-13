@@ -6,6 +6,12 @@
  *   npm run ingest:youtube -- --anime-id=68f0... --per-anime=2
  *   npm run ingest:youtube -- --limit=10 --per-anime=3
  *   npm run ingest:youtube -- --limit=15 --per-anime=3 --queries=2
+ *   npm run ingest:youtube -- --limit=20 --per-anime=3 --total-cap
+ *
+ * --per-anime is a PER-RUN allowance by default (existing behaviour), additionally
+ * clamped so no anime can exceed MAX_VIDEOS_PER_ANIME in total. With --total-cap it
+ * becomes the desired TOTAL per anime and the run imports only the shortfall, so
+ * re-running is effectively idempotent and spends no quota on anime already full.
  *
  * Internal operator tool, not an HTTP endpoint — the brief forbids a public
  * ingestion API, and this codebase has no admin/role concept to protect one with.
@@ -33,6 +39,7 @@ import {
     BLOCKED_TERMS,
     ensureIngestionOwner,
     ingestYouTubeForAnime,
+    MAX_VIDEOS_PER_ANIME,
     QUERY_TEMPLATES,
     resolveTargetAnime,
 } from "../utils/youtubeIngest.js";
@@ -66,7 +73,15 @@ const fmtDuration = (seconds) => {
 const makeLogger = ({ dryRun }) => (event) => {
     switch (event.type) {
         case "anime":
-            console.log(`\n▸ ${event.title}`);
+            console.log(
+                `\n▸ ${event.title}` +
+                    (event.existingCount !== undefined
+                        ? `  (has ${event.existingCount}, room for ${event.slots})`
+                        : "")
+            );
+            break;
+        case "skipped":
+            console.log(`\n▸ ${event.title}\n    — skipped: ${event.reason} (no quota spent)`);
             break;
         case "query":
             console.log(`    search: "${event.query}"`);
@@ -109,6 +124,7 @@ function printSummary(report, { dryRun }) {
     console.log(`  ${dryRun ? "DRY RUN" : "YouTube ingestion"} — summary`);
     line("=");
     console.log(`  Anime processed      : ${report.animeProcessed}`);
+    if (report.skippedFull) console.log(`  Anime skipped (full) : ${report.skippedFull}`);
     console.log(`  Searches performed   : ${report.searches}`);
     console.log(`  Videos discovered    : ${report.discovered} (${report.uniqueDiscovered} unique, after dedupe)`);
     console.log(`  Passed filters       : ${report.accepted}`);
@@ -156,6 +172,14 @@ function printSummary(report, { dryRun }) {
 const run = async () => {
     const args = parseArgs(process.argv);
     const dryRun = Boolean(args["dry-run"]);
+    /**
+     * Opt-in, so every documented command keeps its existing meaning.
+     *   default        : --per-anime is this run's allowance (unchanged), additionally
+     *                    clamped by the MAX_VIDEOS_PER_ANIME ceiling.
+     *   --total-cap    : --per-anime is the desired TOTAL per anime; the run imports
+     *                    only the deficit and skips anime already at the target.
+     */
+    const totalCap = Boolean(args["total-cap"]);
     const perAnime = Math.max(1, Math.min(Number(args["per-anime"]) || 3, 10));
     const queriesPerAnime = Math.max(1, Math.min(Number(args.queries) || 2, QUERY_TEMPLATES.length));
     const limit = Math.max(1, Math.min(Number(args.limit) || 10, 50));
@@ -194,8 +218,11 @@ const run = async () => {
     resetQuotaUsage();
 
     console.log(
-        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime x up to ${perAnime} video(s), ` +
-            `${queriesPerAnime} query template(s) each.`
+        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime x ` +
+            (totalCap
+                ? `up to ${perAnime} TOTAL video(s) each (top-up mode)`
+                : `up to ${perAnime} new video(s) each (ceiling ${MAX_VIDEOS_PER_ANIME} total)`) +
+            `, ${queriesPerAnime} query template(s) each.`
     );
     console.log(`Estimated worst-case quota: ~${animeList.length * (queriesPerAnime * QUOTA_COST.search + QUOTA_COST.videos)} units.`);
     console.log(`Blocked terms: ${BLOCKED_TERMS.length} (${BLOCKED_TERMS.slice(0, 4).join(", ")}, ...)`);
@@ -217,6 +244,7 @@ const run = async () => {
         queriesPerAnime,
         dryRun,
         ownerId,
+        totalCap,
         onEvent: makeLogger({ dryRun }),
     });
 

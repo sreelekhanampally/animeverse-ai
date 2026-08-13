@@ -8,14 +8,14 @@ import connectDB from "./db/index.js";
 
 
 
-const PORT = process.env.PORT ;
+const PORT = process.env.PORT || 8000;
 
 const startServer = async () => {
     try {
         await connectDB();
 
-        const server = app.listen(PORT, "0.0.0.0", () => {
-            console.log(`⚙️ Server running on port ${PORT}`);
+        const server = app.listen(PORT, () => {
+            console.log(` ⚙️ Server running on http://localhost:${PORT}`);
         });
 
         server.on("error", (error) => {
