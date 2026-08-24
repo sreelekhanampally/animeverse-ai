@@ -163,9 +163,136 @@ const deleteComment = asyncHandler(async (req, res) => {
     );
 });
 
+/**
+ * GET /comments/user/videos — the videos the current user has commented on.
+ *
+ * This is the Library / "Commented videos" query. It is derived entirely from the
+ * existing `comments` collection: a comment already references both `owner` and
+ * `video`, so "videos I commented on" is a $group over those two fields. No new
+ * model, no denormalised list on the User document, and nothing extra written at
+ * comment time — which means it is automatically correct for the 61 comments that
+ * already exist, and it cannot drift out of sync with the comments themselves.
+ *
+ * Response contract: ApiResponse.data is a FLAT ARRAY OF VIDEO DOCUMENTS, the
+ * same shape as GET /likes/videos, each with:
+ *   - myCommentsCount : how many comments this user left on that video
+ *   - lastCommentedAt : timestamp of their most recent comment (sort key)
+ *
+ * Requirements this satisfies directly:
+ *   - $group by video means a video appears exactly ONCE no matter how many times
+ *     the user commented on it (requirement 5).
+ *   - Because the list is computed from live comments, deleting a user's last
+ *     comment on a video removes that video from the Library on the next read,
+ *     while deleting only one of several comments leaves it in place
+ *     (requirement 6). deleteComment needed no change for this to hold.
+ */
+const getCommentedVideos = asyncHandler(async (req, res) => {
+    const userId = new mongoose.Types.ObjectId(req.user._id);
+
+    const commentedVideos = await Comment.aggregate([
+        {
+            $match: {
+                owner: userId,
+                video: { $exists: true, $ne: null }
+            }
+        },
+        // One entry per video, regardless of how many comments the user left.
+        {
+            $group: {
+                _id: "$video",
+                myCommentsCount: { $sum: 1 },
+                lastCommentedAt: { $max: "$createdAt" }
+            }
+        },
+        { $sort: { lastCommentedAt: -1 } },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "_id",
+                foreignField: "_id",
+                as: "video",
+                pipeline: [
+                    { $match: { isPublished: true } },
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                { $project: { username: 1, fullName: 1, avatar: 1 } }
+                            ]
+                        }
+                    },
+                    { $addFields: { owner: { $first: "$owner" } } },
+                    {
+                        $lookup: {
+                            from: "likes",
+                            localField: "_id",
+                            foreignField: "video",
+                            as: "likes"
+                        }
+                    },
+                    {
+                        $lookup: {
+                            from: "comments",
+                            localField: "_id",
+                            foreignField: "video",
+                            as: "comments"
+                        }
+                    },
+                    {
+                        $addFields: {
+                            likesCount: { $size: "$likes" },
+                            commentsCount: { $size: "$comments" },
+                            isLiked: { $in: [userId, "$likes.likedBy"] },
+                            // Same legacy-document normalisation the other video
+                            // listings apply.
+                            sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                            externalVideoId: { $ifNull: ["$externalVideoId", ""] }
+                        }
+                    },
+                    {
+                        $project: {
+                            likes: 0,
+                            comments: 0,
+                            __v: 0,
+                            embedding: 0
+                        }
+                    }
+                ]
+            }
+        },
+        // A comment on a since-deleted or unpublished video yields no video here.
+        // Skip it rather than emitting an unrenderable placeholder. The comment
+        // itself is left untouched in the database.
+        { $match: { "video.0": { $exists: true } } },
+        {
+            $replaceWith: {
+                $mergeObjects: [
+                    { $first: "$video" },
+                    {
+                        myCommentsCount: "$myCommentsCount",
+                        lastCommentedAt: "$lastCommentedAt"
+                    }
+                ]
+            }
+        }
+    ]);
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            commentedVideos,
+            "Commented videos fetched successfully"
+        )
+    );
+});
+
 export {
-    getVideoComments, 
-    addComment, 
+    getVideoComments,
+    addComment,
     updateComment,
-     deleteComment
+     deleteComment,
+     getCommentedVideos
     }

@@ -6,6 +6,9 @@ import {
 } from "@tanstack/react-query";
 import { commentService, likeService } from "@/services";
 import { unwrapPagination, unwrapList } from "@/utils/unwrap";
+// Imported rather than re-declared so the Library query and the mutations that
+// must refresh it can never drift onto two differently-spelled keys.
+import { COMMENTED_KEY } from "@/features/video/hooks";
 
 const COMMENTS_KEY = (videoId) => ["comments", videoId];
 const REPLIES_KEY = (commentId) => ["comment-replies", commentId];
@@ -29,6 +32,18 @@ export function useCommentReplies(commentId, enabled) {
     });
 }
 
+/**
+ * Post a comment (or a reply).
+ *
+ * Besides refreshing the thread, this now invalidates the Library / Commented
+ * Videos list. That list is derived from the comments collection, so a new comment
+ * can add a video to it — without this invalidation the Library kept serving its
+ * cached array and the video only showed up after a full browser reload, which is
+ * exactly the reported symptom.
+ *
+ * The video's own cache entry is invalidated too, so `commentsCount` on the watch
+ * page reflects the new total.
+ */
 export function useAddComment(videoId) {
     const qc = useQueryClient();
     return useMutation({
@@ -38,6 +53,8 @@ export function useAddComment(videoId) {
                 qc.invalidateQueries({ queryKey: REPLIES_KEY(vars.parentId) });
             }
             qc.invalidateQueries({ queryKey: COMMENTS_KEY(videoId) });
+            qc.invalidateQueries({ queryKey: COMMENTED_KEY });
+            qc.invalidateQueries({ queryKey: ["video", videoId] });
         },
     });
 }
@@ -96,6 +113,12 @@ export function useDeleteComment(videoId) {
         },
         onSettled: () => {
             qc.invalidateQueries({ queryKey: COMMENTS_KEY(videoId) });
+            // Deleting the user's LAST comment on a video removes that video from
+            // the Library (the list is derived from the comments collection), so
+            // the Library has to be re-read. Deleting one of several comments
+            // leaves the video in place — the server decides which, not the client.
+            qc.invalidateQueries({ queryKey: COMMENTED_KEY });
+            qc.invalidateQueries({ queryKey: ["video", videoId] });
         },
     });
 }
