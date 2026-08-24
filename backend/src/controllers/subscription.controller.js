@@ -1,5 +1,6 @@
 import mongoose, {isValidObjectId} from "mongoose"
 import {User} from "../models/user.model.js"
+import { Video } from "../models/video.model.js"
 import { Subscription } from "../models/subscription.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
@@ -190,8 +191,135 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
     );
 });
 
+/**
+ * GET /subscriptions/feed — videos published by the channels the current user
+ * subscribes to, newest first.
+ *
+ * The Subscriptions page needs "videos from my channels", and no endpoint
+ * produced that. The only alternatives were to fetch the channel list and then
+ * issue one GET /videos?userId=… per channel (N+1 requests, no correct global
+ * ordering, no pagination), or to leave the page empty — which is what it did.
+ *
+ * The subscription relationship is read in the direction the existing model
+ * already defines: `subscriber` = the viewer, `channel` = the creator. The model
+ * is unchanged.
+ *
+ * Response contract: paginated, identical envelope to GET /videos
+ * (`{ docs, totalDocs, page, totalPages, hasNextPage, ... }`) so the frontend can
+ * reuse its existing pagination unwrapper and video cards.
+ */
+const getSubscribedChannelVideos = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 12 } = req.query;
+
+    const pageNumber = Math.max(1, Number(page) || 1);
+    const limitNumber = Math.min(50, Math.max(1, Number(limit) || 12));
+
+    const userId = new mongoose.Types.ObjectId(req.user._id);
+
+    // The channels this user subscribes to. Read as ids only — the video
+    // documents carry their own populated owner further down.
+    const subscriptions = await Subscription.find({ subscriber: userId })
+        .select("channel")
+        .lean();
+
+    const channelIds = subscriptions.map((s) => s.channel);
+
+    // No subscriptions -> an empty page in the same envelope, rather than a
+    // special-cased response the client would have to detect.
+    if (!channelIds.length) {
+        return res.status(200).json(
+            new ApiResponse(
+                200,
+                {
+                    docs: [],
+                    totalDocs: 0,
+                    limit: limitNumber,
+                    page: pageNumber,
+                    totalPages: 0,
+                    hasNextPage: false,
+                    hasPrevPage: false,
+                    nextPage: null,
+                    prevPage: null
+                },
+                "Subscription feed fetched successfully"
+            )
+        );
+    }
+
+    const aggregate = Video.aggregate([
+        {
+            $match: {
+                owner: { $in: channelIds },
+                isPublished: true
+            }
+        },
+        { $sort: { createdAt: -1 } },
+        {
+            $lookup: {
+                from: "users",
+                localField: "owner",
+                foreignField: "_id",
+                as: "owner",
+                pipeline: [
+                    { $project: { username: 1, fullName: 1, avatar: 1 } }
+                ]
+            }
+        },
+        { $addFields: { owner: { $first: "$owner" } } },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes"
+            }
+        },
+        {
+            $lookup: {
+                from: "comments",
+                localField: "_id",
+                foreignField: "video",
+                as: "comments"
+            }
+        },
+        {
+            $addFields: {
+                likesCount: { $size: "$likes" },
+                commentsCount: { $size: "$comments" },
+                isLiked: { $in: [userId, "$likes.likedBy"] },
+                // Every video here belongs to a channel the viewer subscribes to,
+                // so the owner's state is known without another lookup.
+                owner: {
+                    $mergeObjects: ["$owner", { isSubscribed: true }]
+                },
+                // Same legacy-document normalisation as the other video listings.
+                sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                externalVideoId: { $ifNull: ["$externalVideoId", ""] }
+            }
+        },
+        {
+            $project: {
+                likes: 0,
+                comments: 0,
+                __v: 0,
+                embedding: 0
+            }
+        }
+    ]);
+
+    const videos = await Video.aggregatePaginate(aggregate, {
+        page: pageNumber,
+        limit: limitNumber
+    });
+
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Subscription feed fetched successfully")
+    );
+});
+
 export {
     toggleSubscription,
     getUserChannelSubscribers,
-    getSubscribedChannels
+    getSubscribedChannels,
+    getSubscribedChannelVideos
 }
