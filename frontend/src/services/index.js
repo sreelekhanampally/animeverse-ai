@@ -13,6 +13,12 @@ export const commentService = {
     update: (commentId, content) => apiClient.patch(`/comments/c/${commentId}`, { content }),
     remove: (commentId) => apiClient.delete(`/comments/c/${commentId}`),
     replies: (commentId, params) => apiClient.get(`/comments/c/${commentId}/replies`, { params }),
+    /**
+     * Videos the current user has commented on — backs the Library page.
+     * GET /comments/user/videos -> { data: [ <video>, ... ] }, each video also
+     * carrying myCommentsCount and lastCommentedAt.
+     */
+    commentedVideos: () => apiClient.get("/comments/user/videos"),
 };
 
 export const likeService = {
@@ -26,6 +32,11 @@ export const subscriptionService = {
     toggle: (channelId) => apiClient.post(`/subscriptions/c/${channelId}`),
     subscribers: (channelId) => apiClient.get(`/subscriptions/c/${channelId}`),
     subscribedChannels: (userId) => apiClient.get(`/subscriptions/u/${userId}`),
+    /**
+     * Videos from every channel the current user subscribes to — backs the
+     * Subscriptions page. Paginated with the same envelope as GET /videos.
+     */
+    feed: (params) => apiClient.get("/subscriptions/feed", { params }),
 };
 
 export const playlistService = {

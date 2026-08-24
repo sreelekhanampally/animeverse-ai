@@ -8,6 +8,7 @@ import {
     ListVideo,
     History,
     ThumbsUp,
+    MessageSquare,
     Clock,
     LayoutDashboard,
     Sparkles,
@@ -31,6 +32,8 @@ const LIBRARY_ITEMS = [
     { to: PATHS.playlists, label: "Playlists", icon: ListVideo },
     { to: PATHS.history, label: "History", icon: History },
     { to: PATHS.liked, label: "Liked Videos", icon: ThumbsUp },
+    // Videos the signed-in user has commented on.
+    { to: PATHS.library, label: "Commented", icon: MessageSquare },
     { to: PATHS.watchLater, label: "Watch Later", icon: Clock },
 ];
 

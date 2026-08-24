@@ -114,6 +114,27 @@ const getAllVideos = asyncHandler(async (req, res) => {
             }
         },
         {
+            /**
+             * Mirrors getVideoById: expose the viewer's subscription state on the
+             * owner sub-document so a subscribe button rendered from a *listing*
+             * shows the same thing as one rendered from the watch page. Without
+             * this, the two disagreed depending on which query populated the card.
+             */
+            $addFields: {
+                owner: {
+                    $mergeObjects: [
+                        "$owner",
+                        {
+                            subscribersCount: { $size: "$subscribers" },
+                            isSubscribed: req.user?._id
+                                ? { $in: [req.user._id, "$subscribers.subscriber"] }
+                                : false
+                        }
+                    ]
+                }
+            }
+        },
+        {
             $addFields: {
                 likesCount: {
                     $size: "$likes"
@@ -330,6 +351,32 @@ const getVideoById = asyncHandler(async (req, res) => {
             $addFields: {
                 subscribersCount: {
                     $size: "$subscribers"
+                }
+            }
+        },
+        {
+            /**
+             * The watch page's subscribe button reads `video.owner.isSubscribed`
+             * and `video.owner.subscribersCount`, but the owner sub-document was
+             * projected down to username/fullName/avatar only, so BOTH fields
+             * arrived `undefined`. The button therefore rendered "Subscribe" for a
+             * channel the viewer was already subscribed to, and it snapped back to
+             * "Subscribe" on the refetch that follows a successful toggle.
+             *
+             * `subscribersCount` is still emitted at the top level as well, so
+             * anything already reading it there is unaffected.
+             */
+            $addFields: {
+                owner: {
+                    $mergeObjects: [
+                        "$owner",
+                        {
+                            subscribersCount: { $size: "$subscribers" },
+                            isSubscribed: req.user?._id
+                                ? { $in: [req.user._id, "$subscribers.subscriber"] }
+                                : false
+                        }
+                    ]
                 }
             }
         },

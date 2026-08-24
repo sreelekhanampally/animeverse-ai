@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { authService, subscriptionService } from "@/services";
 import { unwrapData } from "@/utils/unwrap";
+import { SUBSCRIPTION_FEED_KEY } from "@/features/video/hooks";
 
 export const CHANNEL_KEY = (username) => ["channel", username];
 
@@ -59,6 +60,14 @@ export function useToggleChannelSubscribe(username, channelId) {
             await qc.invalidateQueries({ queryKey: key });
             // The sidebar/subscriptions list reads from this key elsewhere.
             qc.invalidateQueries({ queryKey: ["subscriptions"] });
+            // Subscribing from a channel page has to reach the rest of the app
+            // too, or the state looks inconsistent the moment the user navigates:
+            //  - the feed must gain (or lose) this creator's videos,
+            //  - any cached video whose owner is this channel carries its own
+            //    owner.isSubscribed, including the watch page's CreatorCard.
+            qc.invalidateQueries({ queryKey: SUBSCRIPTION_FEED_KEY });
+            qc.invalidateQueries({ queryKey: ["videos"] });
+            qc.invalidateQueries({ queryKey: ["video"] });
         },
     });
 }

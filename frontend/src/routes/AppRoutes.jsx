@@ -15,6 +15,7 @@ const PlaylistsPage = lazy(() => import("@/pages/PlaylistsPage.jsx"));
 const PlaylistDetailPage = lazy(() => import("@/pages/PlaylistDetailPage.jsx"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage.jsx"));
 const LikedPage = lazy(() => import("@/pages/LikedPage.jsx"));
+const LibraryPage = lazy(() => import("@/pages/LibraryPage.jsx"));
 const WatchLaterPage = lazy(() => import("@/pages/WatchLaterPage.jsx"));
 const WatchPage = lazy(() => import("@/pages/WatchPage.jsx"));
 const UploadVideoPage = lazy(() => import("@/pages/UploadVideoPage.jsx"));
@@ -50,6 +51,8 @@ export function AppRoutes() {
                         <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
                         <Route path={PATHS.history} element={<HistoryPage />} />
                         <Route path={PATHS.liked} element={<LikedPage />} />
+                        {/* Commented videos. Protected: /comments/user/videos is verifyJWT-only. */}
+                        <Route path={PATHS.library} element={<LibraryPage />} />
                         <Route path={PATHS.watchLater} element={<WatchLaterPage />} />
                         <Route path={PATHS.upload} element={<UploadVideoPage />} />
                         <Route path={PATHS.dashboard} element={<DashboardPage />} />

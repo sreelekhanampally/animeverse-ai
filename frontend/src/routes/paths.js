@@ -6,6 +6,8 @@ export const PATHS = {
     playlists: "/playlists",
     history: "/history",
     liked: "/liked",
+    // Videos the signed-in user has commented on.
+    library: "/library",
     watchLater: "/watch-later",
     upload: "/upload",
     dashboard: "/dashboard",
