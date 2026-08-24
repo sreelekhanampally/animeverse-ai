@@ -7,7 +7,7 @@ export default function AiChatPage() {
         <div className="space-y-6">
             <SectionHeader
                 icon={Bot}
-                title="AI Chat"
+                title="Ask"
                 subtitle="Talk to the AnimeVerse companion  -  coming soon."
             />
             <EmptyState

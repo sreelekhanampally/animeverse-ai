@@ -62,6 +62,7 @@ import playlistRouter from "./routes/playlist.routes.js";
 import dashboardRouter from "./routes/dashboard.routes.js";
 import aiRouter from "./routes/ai.routes.js";
 import communityRouter from "./routes/community.routes.js";
+import statsRouter from "./routes/stats.routes.js";
 
 // Routes declaration
 app.use("/api/v1/healthcheck", healthcheckRouter);
@@ -77,6 +78,7 @@ app.use("/api/v1/playlist", playlistRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
 app.use("/api/v1/ai", aiRouter);
 app.use("/api/v1/community", communityRouter);
+app.use("/api/v1/stats", statsRouter);
 
 // 404 handler
 app.use((req, res, next) => {

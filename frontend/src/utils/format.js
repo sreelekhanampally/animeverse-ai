@@ -6,6 +6,19 @@ export function formatViews(n) {
     return `${(n / 1e9).toFixed(1).replace(/\.0$/, "")}B`;
 }
 
+/**
+ * Exact count with thousands separators (1247 -> "1,247").
+ *
+ * Distinct from formatViews, which compacts to "1.2K". Compacting is right for a
+ * view counter on a card, but the hero is stating the size of the catalogue, so
+ * rounding 1,247 videos down to "1.2K" would lose information the number exists
+ * to convey.
+ */
+export function formatCount(n) {
+    if (typeof n !== "number" || !Number.isFinite(n)) return "0";
+    return Math.max(0, Math.trunc(n)).toLocaleString("en-US");
+}
+
 export function formatDuration(seconds) {
     if (seconds == null || isNaN(seconds)) return "";
     const s = Math.floor(seconds % 60)

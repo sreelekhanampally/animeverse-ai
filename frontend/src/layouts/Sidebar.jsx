@@ -42,8 +42,8 @@ const CREATOR_ITEMS = [
 ];
 
 const AI_ITEMS = [
-    { to: PATHS.aiSearch, label: "AI Search", icon: Sparkles, tint: "accent" },
-    { to: PATHS.aiChat, label: "AI Chat", icon: Bot, tint: "accent" },
+    { to: PATHS.aiSearch, label: "Scene Search", icon: Sparkles, tint: "accent" },
+    { to: PATHS.aiChat, label: "Ask", icon: Bot, tint: "accent" },
 ];
 
 const SETTINGS_ITEMS = [{ to: PATHS.settings, label: "Settings", icon: Settings }];
@@ -90,11 +90,11 @@ function Item({ to, label, icon: Icon, collapsed, tint, onNavigate }) {
                         )}
                     />
                     {!collapsed && <span className="truncate">{label}</span>}
-                    {!collapsed && tint === "accent" && (
+                    {/* {!collapsed && tint === "accent" && (
                         <span className="ml-auto rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent">
                             AI
                         </span>
-                    )}
+                    )} */}
                 </>
             )}
         </NavLink>
@@ -116,7 +116,7 @@ function SidebarNav({ collapsed, onNavigate }) {
             {CREATOR_ITEMS.map((it) => (
                 <Item key={it.to} {...it} collapsed={collapsed} onNavigate={onNavigate} />
             ))}
-            {!collapsed && <SectionLabel>Intelligence</SectionLabel>}
+            {!collapsed && <SectionLabel>ASSISTANT</SectionLabel>}
             {AI_ITEMS.map((it) => (
                 <Item key={it.to} {...it} collapsed={collapsed} onNavigate={onNavigate} />
             ))}
@@ -125,16 +125,16 @@ function SidebarNav({ collapsed, onNavigate }) {
                 <Item key={it.to} {...it} collapsed={collapsed} onNavigate={onNavigate} />
             ))}
 
-            {!collapsed && (
+            {/* {!collapsed && (
                 <div className="mt-6 rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-transparent to-accent/15 p-4">
                     <div className="flex items-center gap-2 font-display text-sm font-semibold text-white">
                         <Sparkles className="h-4 w-4 text-accent" /> Neural Recap
                     </div>
                     <p className="mt-1 text-xs text-muted">
-                        AI-powered summaries, semantic search, and chat land in Session 2.
+                        AI-powered summaries, semantic search, and chat land in future sessions. The frontend is already wired to
                     </p>
                 </div>
-            )}
+            )} */}
         </nav>
     );
 }

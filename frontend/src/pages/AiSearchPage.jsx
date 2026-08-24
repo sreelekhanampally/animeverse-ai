@@ -8,7 +8,7 @@ export default function AiSearchPage() {
         <div className="space-y-6">
             <SectionHeader
                 icon={Sparkles}
-                title="AI Search"
+                title="Scene Search"
                 subtitle="Semantic search across every video, transcript, and post."
             />
             <div className="gradient-border rounded-2xl">
@@ -25,7 +25,7 @@ export default function AiSearchPage() {
             </div>
             <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-6 text-sm text-muted">
                 <p>
-                    Semantic AI search will land in the next session. The frontend is already wired to
+                    Semantic Scene Search will land in the next session. The frontend is already wired to
                     <code className="mx-1 rounded bg-white/10 px-1 text-white/85">aiService.search</code>
                     for a smooth handoff.
                 </p>

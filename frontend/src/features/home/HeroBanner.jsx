@@ -2,8 +2,29 @@ import { motion } from "framer-motion";
 import { Play, Sparkles, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PATHS } from "@/routes/paths";
+import { usePlatformStats } from "@/features/home/hooks";
+import { formatCount } from "@/utils/format";
 
 export function HeroBanner() {
+    const { data: stats, isLoading, isError } = usePlatformStats();
+
+    /**
+     * Every one of the three states has to render something: the hero is the
+     * first block on the page and is not gated behind a page loader, so there is
+     * no state in which these pills are allowed to be blank or to throw.
+     *
+     * "..." while in flight (never the raw key, which is what made the previous
+     * placeholder text visible), "--" if the request failed or came back without
+     * a usable number. A stats outage therefore costs two characters and leaves
+     * the rest of the homepage working.
+     */
+    const statValue = (key) => {
+        if (isLoading) return "...";
+        const value = stats?.[key];
+        if (isError || typeof value !== "number") return "--";
+        return formatCount(value);
+    };
+
     return (
         <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-primary/25 via-transparent to-accent/20 p-6 sm:p-8 md:p-10">
             {/* Decorations */}
@@ -30,14 +51,17 @@ export function HeroBanner() {
                     transition={{ duration: 0.4 }}
                 >
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-widest text-accent">
-                        <Sparkles className="h-3 w-3" /> Now in preview
+                        <Sparkles className="h-3 w-3" /> OPEN BETA · v0.4
                     </div>
                     <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
-                        Your Neural Gateway to <span className="gradient-text">Every Anime Universe</span>
+                        <span>You know the scene. </span>
                     </h1>
+                    <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
+                        <span>You just can't name it. </span>
+                    </h1>
+                    {/* <span className="gradient-text">Every Anime Universe</span> */}
                     <p className="mt-3 max-w-xl text-sm text-white/75 sm:text-base">
-                        Stream, discuss, and discover  -  with a companion AI that knows lore, tropes, and the
-                        exact frame you're trying to find.
+                        Describe it badly. “Rain fight, red umbrella, maybe episode 12.” AnimeVerse finds the scene, episode, and timestamp.
                     </p>
                     <div className="mt-6 flex flex-wrap items-center gap-3">
                         <Link
@@ -47,7 +71,7 @@ export function HeroBanner() {
                             <Play className="h-4 w-4" fill="currentColor" /> Start Watching
                         </Link>
                         <Link to={PATHS.aiSearch} className="btn-ghost">
-                            <Sparkles className="h-4 w-4 text-accent" /> Try AI Search
+                            <Sparkles className="h-4 w-4 text-accent" /> Find a Scene
                             <ChevronRight className="h-4 w-4" />
                         </Link>
                     </div>
@@ -61,9 +85,9 @@ export function HeroBanner() {
                     className="grid grid-cols-3 gap-3"
                 >
                     {[
-                        { k: "12K+", v: "Series" },
-                        { k: "48K+", v: "Creators" },
-                        { k: "AI", v: "Companion" },
+                        { k: statValue("videosCount"), v: "Videos" },
+                        { k: statValue("creatorsCount"), v: "Creators" },
+                        { k: "AI", v: "Companion " },
                     ].map((s) => (
                         <div
                             key={s.v}

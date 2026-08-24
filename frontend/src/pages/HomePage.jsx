@@ -39,8 +39,8 @@ export default function HomePage() {
             <section>
                 <SectionHeader
                     icon={Flame}
-                    title="🔥 Trending Anime"
-                    subtitle="Everyone's watching these across AnimeVerse."
+                    title="🔥Most-watched this week"
+                    subtitle="See what the AnimeVerse community is watching right now."
                     to={PATHS.trending}
                 />
                 <VideoRow

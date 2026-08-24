@@ -74,6 +74,14 @@ export const dashboardService = {
     videos: () => apiClient.get("/dashboard/videos"),
 };
 
+/**
+ * Platform-wide counters for the homepage hero — public, unlike
+ * dashboardService.stats() which is the logged-in creator's own totals.
+ */
+export const statsService = {
+    platform: () => apiClient.get("/stats"),
+};
+
 /* AI service — scaffolded for future sessions, not called in this session. */
 export const aiService = {
     health: () => apiClient.get("/ai/health"),
