@@ -2,9 +2,21 @@ import { useEffect, useRef, useState, cloneElement } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/utils/cn";
 
-export function Dropdown({ trigger, children, align = "right", className }) {
+/**
+ * `onOpenChange` is optional and additive — every existing call site omits it and
+ * behaves exactly as before. The notification bell needs it because "the tray was
+ * opened" is the event that marks notifications read.
+ */
+export function Dropdown({ trigger, children, align = "right", className, onOpenChange }) {
     const [open, setOpen] = useState(false);
     const rootRef = useRef(null);
+
+    useEffect(() => {
+        onOpenChange?.(open);
+        // Intentionally keyed on `open` only: including the callback would re-fire
+        // whenever the parent re-renders with a new inline function.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
 
     useEffect(() => {
         function onDoc(e) {
