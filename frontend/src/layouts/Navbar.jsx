@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
     Search,
-    Bell,
     Menu,
     Sparkles,
     Upload,
@@ -19,9 +18,9 @@ import { Avatar } from "@/components/ui/Avatar";
 import {
     Dropdown,
     DropdownItem,
-    DropdownLabel,
     DropdownSeparator,
 } from "@/components/ui/Dropdown";
+import { NotificationBell } from "@/features/settings/NotificationBell";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUiStore } from "@/store/uiStore";
 import { PATHS } from "@/routes/paths";
@@ -120,21 +119,7 @@ export function Navbar() {
                                 Upload
                             </Button>
 
-                            <Dropdown
-                                trigger={
-                                    <IconButton aria-label="Notifications">
-                                        <span className="relative">
-                                            <Bell className="h-5 w-5" />
-                                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-accent shadow-[0_0_0_2px_var(--bg,#0f172a)]" />
-                                        </span>
-                                    </IconButton>
-                                }
-                            >
-                                <DropdownLabel>Notifications</DropdownLabel>
-                                <div className="px-3 py-6 text-center text-sm text-muted">
-                                    You're all caught up.
-                                </div>
-                            </Dropdown>
+                            <NotificationBell />
 
                             <Dropdown
                                 trigger={
