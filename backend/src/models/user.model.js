@@ -45,6 +45,51 @@ const userSchema = new Schema({
         },
         refreshToken: {
             type:String
+        },
+
+        /**
+         * Per-user notification switches.
+         *
+         * Every key here maps to an event the application can actually produce
+         * from an existing collection — likes, comments, subscriptions, videos
+         * and community posts. There is deliberately no "mentions" key: nothing
+         * in the codebase parses @mentions, so a mentions toggle would be a
+         * control that silently governs nothing.
+         *
+         * `default: true` on each field (plus a default for the parent object)
+         * means every pre-existing user document keeps behaving exactly as it did
+         * before this field existed: reads return all-enabled without a migration
+         * and without backfilling a single document.
+         */
+        notificationPreferences: {
+            type: {
+                // A channel the user subscribes to published a video.
+                uploads: { type: Boolean, default: true },
+                // Someone commented on one of the user's videos.
+                comments: { type: Boolean, default: true },
+                // Someone liked one of the user's videos.
+                likes: { type: Boolean, default: true },
+                // Someone subscribed to the user's channel.
+                subscribers: { type: Boolean, default: true },
+                // New post in a fan club the user belongs to.
+                community: { type: Boolean, default: true },
+            },
+            // Nothing addresses a single switch by id, so the automatic
+            // subdocument _id would just be a stray ObjectId in every user doc.
+            _id: false,
+            default: () => ({}),
+        },
+
+        /**
+         * When the user last opened the notification dropdown. Drives the unread
+         * dot in the navbar, which was previously always visible.
+         *
+         * null means "never opened", so everything counts as unread — the correct
+         * reading for existing documents that predate this field.
+         */
+        notificationsLastReadAt: {
+            type: Date,
+            default: null,
         }
     }, {timestamps:true}
 )
