@@ -270,7 +270,7 @@ const getNotifications = asyncHandler(async (req, res) => {
                 unreadCount: withRead.filter((n) => n.isUnread).length,
                 lastReadAt,
             },
-            "Notifications fetched successfully"
+            "Notifications fetched Successfully"
         )
     );
 });
