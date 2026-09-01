@@ -1,33 +1,143 @@
-// AnimeVerse AI service layer.
-// Uses process.env.OPENAI_API_KEY. If the key is missing, functions return
-// deterministic stub data so the app remains usable in dev.
+/**
+ * AnimeVerse AI service layer.
+ *
+ * WHAT CHANGED AND WHY
+ * --------------------
+ * This file used to fabricate results whenever OPENAI_API_KEY was absent:
+ *   - `embedText` returned a 32-dimensional hash-derived vector,
+ *   - `chatComplete` returned "(AI stub) OpenAI key not set.",
+ *   - `autoTagAndSummarize` returned the longest words in the title as "tags",
+ *   - `commentSentiment` counted six hard-coded positive words,
+ *   - `transcribeAudio` returned an error sentence as if it were a transcript.
+ *
+ * Every one of those made an unconfigured deployment look configured. The
+ * embedding case was actively harmful — the fake vector was persisted next to real
+ * 1536-dimensional ones in the same field, so the collection ended up holding two
+ * incompatible kinds of vector with nothing recording which was which, and
+ * semantic search returned confident-looking nonsense.
+ *
+ * The stub sentence being persisted is not hypothetical either: the summary
+ * controller writes whatever it receives to `Video.aiSummary`, so "(AI stub)
+ * OpenAI key not set." could be sitting in real documents. `isTranscriptEligible`
+ * in utils/embeddingText.js therefore screens those markers out rather than
+ * embedding a sentence about missing configuration.
+ *
+ * Now every AI function either does the real thing or throws AIUnavailableError,
+ * which carries statusCode 503 and is turned into an honest "AI is not configured"
+ * response by the global error handler in app.js.
+ *
+ * The vector path lives in services/embedding.service.js; the identity of the
+ * model lives in config/embedding.config.js. Both are re-exported here so existing
+ * importers of this module keep working.
+ */
 
 import OpenAI from "openai";
 import fs from "fs";
+import { EmbeddingUnavailableError } from "../config/embedding.config.js";
+import {
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    EMBEDDING_VERSION,
+    EmbeddingValidationError,
+    activeEmbeddingIdentity,
+    cosineSimilarity,
+    describeEmbeddingState,
+    embeddingStatus,
+    generateEmbedding,
+    hasEmbeddingProvider,
+    isSearchableEmbedding,
+} from "./embedding.service.js";
 
-const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const EMBED_MODEL = process.env.OPENAI_EMBED_MODEL || "text-embedding-3-small";
+// Re-exported so ai.controller.js and the backfill script have one import site.
+export {
+    EMBEDDING_DIMENSIONS,
+    EMBEDDING_MODEL,
+    EMBEDDING_VERSION,
+    EmbeddingUnavailableError,
+    EmbeddingValidationError,
+    activeEmbeddingIdentity,
+    cosineSimilarity,
+    describeEmbeddingState,
+    embeddingStatus,
+    generateEmbedding,
+    hasEmbeddingProvider,
+    isSearchableEmbedding,
+};
+
+/**
+ * Chat/completion model. Unlike the embedding model this one stays env-driven:
+ * swapping a chat model changes wording, not data compatibility, and nothing
+ * persisted depends on which one produced it.
+ */
+const CHAT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || "whisper-1";
 
-let client = null;
-export const hasAI = () => Boolean(OPENAI_KEY);
+/**
+ * Raised by every non-embedding AI helper when no key is configured. Shares the
+ * 503 semantics of EmbeddingUnavailableError — the service is healthy, it is
+ * simply unconfigured, which is an operational state and not a crash.
+ */
+export class AIUnavailableError extends Error {
+    constructor(feature = "This AI feature") {
+        super(`${feature} is unavailable: OPENAI_API_KEY is not configured.`);
+        this.name = "AIUnavailableError";
+        this.isUnavailable = true;
+        this.statusCode = 503;
+    }
+}
 
-const getClient = () => {
-    if (!hasAI()) return null;
-    if (!client) client = new OpenAI({ apiKey: OPENAI_KEY });
+/** Kept for backwards compatibility with existing callers of the old scaffold. */
+export const hasAI = () => hasEmbeddingProvider();
+
+let client = null;
+const getClient = (feature) => {
+    if (!hasAI()) throw new AIUnavailableError(feature);
+    if (!client) client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
     return client;
 };
 
-// ---------- Chat / completion ----------
+/* ------------------------------------------------------------------ *
+ * Embeddings — compatibility shim over embedding.service.js
+ * ------------------------------------------------------------------ */
+
+/**
+ * Returns a bare 1536-float vector for the given text.
+ *
+ * Kept because the old `embedText` name is already imported by ai.controller.js.
+ * Prefer `generateEmbedding`, which also returns the model/version/hash metadata
+ * that must be persisted with the vector — this function deliberately discards it,
+ * so anything writing to the database should not use it.
+ *
+ * Throws rather than fabricating a vector when unconfigured. That is the entire
+ * point of this rewrite.
+ */
+export async function embedText(text) {
+    const { embedding } = await generateEmbedding(text);
+    return embedding;
+}
+
+/**
+ * Deprecated alias for `cosineSimilarity`, which returns null for incomparable
+ * vectors where this returns 0.
+ *
+ * The 0 is why this is deprecated: it made a 32-float legacy vector and a real
+ * 1536-float query vector score 0 — indistinguishable from a genuinely unrelated
+ * pair, and ranked above anything scoring negative. Callers should filter on
+ * `isSearchableEmbedding` first and use `cosineSimilarity`.
+ */
+export function cosineSim(a, b) {
+    const score = cosineSimilarity(a, b);
+    return score === null ? 0 : score;
+}
+
+/* ------------------------------------------------------------------ *
+ * Chat / completion
+ * ------------------------------------------------------------------ */
+
 export async function chatComplete({ system, user, temperature = 0.4, json = false }) {
-    const c = getClient();
-    if (!c) {
-        // Stub for local dev without a key
-        return json ? { reply: "(AI stub) OpenAI key not set." } : "(AI stub) OpenAI key not set.";
-    }
+    const c = getClient("Chat completion");
     const resp = await c.chat.completions.create({
-        model: MODEL,
+        model: CHAT_MODEL,
         temperature,
         response_format: json ? { type: "json_object" } : undefined,
         messages: [
@@ -46,37 +156,10 @@ export async function chatComplete({ system, user, temperature = 0.4, json = fal
     return text;
 }
 
-// ---------- Embeddings ----------
-export async function embedText(text) {
-    if (!text?.trim()) return [];
-    const c = getClient();
-    if (!c) {
-        // Cheap deterministic hash-based pseudo-embedding for dev
-        const dim = 32;
-        const v = new Array(dim).fill(0);
-        for (let i = 0; i < text.length; i++) v[i % dim] += text.charCodeAt(i);
-        const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
-        return v.map((x) => x / norm);
-    }
-    const resp = await c.embeddings.create({ model: EMBED_MODEL, input: text });
-    return resp.data?.[0]?.embedding || [];
-}
+/* ------------------------------------------------------------------ *
+ * Video summary
+ * ------------------------------------------------------------------ */
 
-// ---------- Cosine similarity ----------
-export function cosineSim(a, b) {
-    if (!a?.length || !b?.length || a.length !== b.length) return 0;
-    let dot = 0;
-    let na = 0;
-    let nb = 0;
-    for (let i = 0; i < a.length; i++) {
-        dot += a[i] * b[i];
-        na += a[i] * a[i];
-        nb += b[i] * b[i];
-    }
-    return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
-}
-
-// ---------- Video summary ----------
 export async function summarizeVideo({ title, description, transcript = "" }) {
     const source = [
         `Title: ${title}`,
@@ -96,21 +179,16 @@ export async function summarizeVideo({ title, description, transcript = "" }) {
     });
 }
 
-// ---------- Auto tagging ----------
+/* ------------------------------------------------------------------ *
+ * Auto tagging
+ * ------------------------------------------------------------------ */
+
 export async function autoTagAndSummarize({ title, description }) {
-    const c = getClient();
-    if (!c) {
-        // Stub tags derived from words
-        const words = `${title} ${description}`
-            .toLowerCase()
-            .split(/\W+/)
-            .filter((w) => w.length > 4);
-        return {
-            tags: [...new Set(words)].slice(0, 6),
-            summary: description.slice(0, 200),
-        };
-    }
-    return chatComplete({
+    // No word-frequency fallback. Splitting a title on non-word characters and
+    // keeping words longer than four letters produced "tags" like "shippuden
+    // official trailer" — plausible enough to be written to the database and then
+    // fed into an embedding, where they would degrade the vector with noise.
+    const result = await chatComplete({
         system: "Extract anime/video metadata as JSON.",
         user: `Given the anime video below, return JSON:
 {
@@ -123,14 +201,19 @@ Title: ${title}
 Description: ${description}`,
         json: true,
         temperature: 0.2,
-    }).then((r) => ({
-        tags: Array.isArray(r.tags) ? r.tags.slice(0, 10) : [],
-        summary: r.summary || "",
-        category: r.category || "General",
-    }));
+    });
+
+    return {
+        tags: Array.isArray(result.tags) ? result.tags.slice(0, 10) : [],
+        summary: result.summary || "",
+        category: result.category || "General",
+    };
 }
 
-// ---------- Chat with a video (RAG over transcript) ----------
+/* ------------------------------------------------------------------ *
+ * Chat with a video
+ * ------------------------------------------------------------------ */
+
 export async function askVideo({ title, transcript, question }) {
     const context = (transcript || "").slice(0, 8000);
     return chatComplete({
@@ -141,24 +224,16 @@ export async function askVideo({ title, transcript, question }) {
     });
 }
 
-// ---------- Sentiment on a batch of comments ----------
+/* ------------------------------------------------------------------ *
+ * Sentiment on a batch of comments
+ * ------------------------------------------------------------------ */
+
 export async function commentSentiment(comments) {
     if (!comments?.length) return { positive: 0, neutral: 0, negative: 0, samples: [] };
-    const c = getClient();
-    if (!c) {
-        // Naive heuristic fallback
-        const positives = ["love", "great", "amazing", "best", "awesome", "goat"];
-        const negatives = ["hate", "bad", "worst", "trash", "cringe"];
-        let p = 0;
-        let n = 0;
-        for (const t of comments) {
-            const s = t.toLowerCase();
-            if (positives.some((w) => s.includes(w))) p++;
-            else if (negatives.some((w) => s.includes(w))) n++;
-        }
-        const neutral = comments.length - p - n;
-        return { positive: p, neutral, negative: n };
-    }
+
+    // The old six-keyword heuristic classified anything without those words as
+    // "neutral", so a wall of criticism reported as neutral and looked like a
+    // working sentiment feature.
     return chatComplete({
         system: "You classify anime video comments into sentiment buckets.",
         user: `Classify each comment as positive, neutral, or negative and return JSON:
@@ -170,10 +245,25 @@ ${comments.map((t, i) => `${i + 1}. ${t}`).join("\n")}`,
     });
 }
 
-// ---------- Transcription (Whisper) ----------
+/* ------------------------------------------------------------------ *
+ * Transcription (Whisper)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Transcribes a LOCAL audio file that a creator uploaded through multer.
+ *
+ * Scope, stated explicitly because it is a hard project rule: this only ever runs
+ * on a file the operator already has on disk from a creator upload. YouTube media
+ * is never downloaded, re-hosted, converted, extracted or sent to Whisper, so no
+ * YouTube video can reach this function — there is no code path that produces a
+ * local file from a YouTube id, and none is added here.
+ *
+ * Correspondingly, `isTranscriptEligible` refuses to embed a transcript on any
+ * document whose sourceType is "youtube", regardless of what is stored in the
+ * field or who owns the video.
+ */
 export async function transcribeAudio(localFilePath, { lang } = {}) {
-    const c = getClient();
-    if (!c) return { text: "(AI stub) transcription unavailable  -  set OPENAI_API_KEY.", language: lang || "en" };
+    const c = getClient("Transcription");
     const resp = await c.audio.transcriptions.create({
         model: TRANSCRIBE_MODEL,
         file: fs.createReadStream(localFilePath),
@@ -183,7 +273,10 @@ export async function transcribeAudio(localFilePath, { lang } = {}) {
     return { text: resp.text, language: resp.language, segments: resp.segments };
 }
 
-// ---------- Translation ----------
+/* ------------------------------------------------------------------ *
+ * Translation
+ * ------------------------------------------------------------------ */
+
 export async function translateText(text, targetLang = "en") {
     return chatComplete({
         system: `Translate the user's text to ${targetLang}. Preserve tone. Output only the translation.`,

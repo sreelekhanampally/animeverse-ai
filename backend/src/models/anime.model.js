@@ -133,6 +133,32 @@ const animeSchema = new Schema(
         // from `updatedAt`, which also changes when unrelated fields are touched.
         metadataSource: { type: String, default: "anilist" },
         lastSyncedAt: { type: Date, default: Date.now },
+
+        /**
+         * --- Embedding + its provenance ---
+         *
+         * Structurally identical to the Video model's block, and for the same
+         * reason: a vector is only usable when the model, dimension count and text
+         * version that produced it all match the active configuration in
+         * config/embedding.config.js. Keeping the two models' field names and
+         * semantics identical means one validator (`isSearchableEmbedding`) and one
+         * backfill serve both collections.
+         *
+         * Anime documents are reference data with rich AniList-backed metadata —
+         * titles in three scripts, genres, studios, cast — which makes them the
+         * strongest retrieval surface in the system. Embedding them lets a query
+         * find the right series even when no individual video mentions the term.
+         *
+         * select:false throughout: a 1536-float array is ~30KB of JSON that no
+         * client has any use for, and the anime listing endpoints must not start
+         * shipping it.
+         */
+        embedding: { type: [Number], default: [], select: false },
+        embeddingModel: { type: String, default: null, select: false },
+        embeddingDimensions: { type: Number, default: null, select: false },
+        embeddingVersion: { type: String, default: null, select: false },
+        embeddingGeneratedAt: { type: Date, default: null, select: false },
+        embeddingTextHash: { type: String, default: null, select: false },
     },
     { timestamps: true }
 );
@@ -145,6 +171,10 @@ animeSchema.index({
     "title.display": "text",
     description: "text",
 });
+
+// Mirrors the Video model's index: lets the backfill locate stale or unembedded
+// documents without a collection scan.
+animeSchema.index({ embeddingModel: 1, embeddingVersion: 1 });
 
 animeSchema.plugin(mongooseAggregatePaginate);
 

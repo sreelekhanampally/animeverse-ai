@@ -68,7 +68,46 @@ const videoSchema = new Schema(
         aiSummary: { type: String, default: "" },
         transcript: { type: String, default: "" },
         transcriptLang: { type: String, default: "en" },
+
+        /**
+         * --- Embedding + its provenance ---
+         *
+         * The vector alone is not enough to know whether it can be used. The
+         * collection already contains 32-dimensional vectors written by an earlier
+         * scaffold that fabricated them when no API key was present, and a bare
+         * array gives no way to tell those from a real 1536-float
+         * text-embedding-3-small vector. Comparing the two is not a weak signal but
+         * noise, so the metadata below records exactly what produced each vector and
+         * a vector is only trusted when all of it matches the active configuration
+         * in config/embedding.config.js.
+         *
+         * Nothing here is deleted or migrated: a stale vector simply stops being
+         * eligible for search until it is reindexed.
+         */
+
+        // select:false, as before. Aggregations bypass that — hence the existing
+        // `embedding: 0` projections in the video/dashboard/like/comment/user/
+        // subscription controllers, which remain the enforcement point there.
         embedding: { type: [Number], default: [], select: false },
+
+        // Which model produced the vector, e.g. "text-embedding-3-small". Null on
+        // every legacy document, which is exactly what makes them detectable.
+        embeddingModel: { type: String, default: null, select: false },
+
+        // Stored rather than derived from embedding.length so a truncated or
+        // partially written array can be caught by cross-checking the two.
+        embeddingDimensions: { type: Number, default: null, select: false },
+
+        // The text recipe, e.g. "metadata-v1". Same model over different input text
+        // yields vectors that are comparable arithmetically but not semantically.
+        embeddingVersion: { type: String, default: null, select: false },
+
+        embeddingGeneratedAt: { type: Date, default: null, select: false },
+
+        // SHA-256 of the exact string embedded. Lets the backfill skip documents
+        // whose meaningful content has not changed, making re-runs cheap and
+        // idempotent instead of re-billing for identical vectors.
+        embeddingTextHash: { type: String, default: null, select: false },
     },
     { timestamps: true }
 );
@@ -112,6 +151,14 @@ videoSchema.index(
 
 // Text search across title + description
 videoSchema.index({ title: "text", description: "text", tags: "text" });
+
+/**
+ * Lets the backfill find documents whose vector was made by a different model or
+ * text version without scanning the whole collection. Not unique, and not sparse:
+ * legacy documents have neither field, and a null/null entry is precisely what a
+ * "needs reindexing" query looks for.
+ */
+videoSchema.index({ embeddingModel: 1, embeddingVersion: 1 });
 
 videoSchema.plugin(mongooseAggregatePaginate);
 
