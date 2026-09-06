@@ -7,14 +7,22 @@
  *   npm run backfill:embeddings -- --target=videos --limit=10
  *   npm run backfill:embeddings -- --force
  *
- * Generates 1536-dimensional text-embedding-3-small vectors for Anime and Video
- * documents and stamps each with the model, dimension count, text version, a
- * timestamp and a SHA-256 of the exact text embedded.
+ * Generates embeddings for Anime and Video documents using the provider named in
+ * config/embedding.config.js — by default `local`, i.e. 384-dimensional
+ * sentence-transformers/all-MiniLM-L6-v2 vectors computed in this process — and
+ * stamps each with the model, dimension count, text version, a timestamp and a
+ * SHA-256 of the exact text embedded.
  *
  * A script rather than an endpoint, matching ingestAnime.js and ingestYouTube.js:
- * this spends money per document and rewrites a whole collection, which is an
- * operator action. There is no admin/role concept on the User model to protect an
- * HTTP equivalent with.
+ * it rewrites a whole collection, which is an operator action. There is no
+ * admin/role concept on the User model to protect an HTTP equivalent with.
+ *
+ * COST
+ * ----
+ * Under the local provider a run costs nothing but CPU time: no API key is read, no
+ * request leaves the machine, and there is no rate limit or quota to exhaust. The
+ * weights are loaded once, before the first document, so a load failure aborts the
+ * run before any document is touched instead of being reported 133 times.
  *
  * WHAT IT WILL NOT TOUCH
  * ----------------------
@@ -40,9 +48,17 @@
  *
  * SAFETY
  * ------
- * --dry-run writes nothing and needs no API key. Without --force, a document whose
- * stored hash already matches the freshly built text is skipped, so an interrupted
- * run resumes where it stopped and a completed run costs nothing to repeat.
+ * --dry-run writes nothing, loads no model and generates no embedding. Without
+ * --force, a document whose stored hash already matches the freshly built text is
+ * skipped, so an interrupted run resumes where it stopped and a completed run costs
+ * nothing to repeat.
+ *
+ * Every vector currently in the database was written under metadata-v1 (or is a
+ * legacy 32-float array), so all of them now fail validation and every document
+ * will be re-embedded once. That is the intended consequence of changing the
+ * vector representation, not a bug — a 1536-float vector cannot be compared to a
+ * 384-float one. No legacy vector is deleted; each is overwritten in place when its
+ * document is reprocessed.
  *
  * Exits non-zero on any failure, so a wrapper can detect it.
  */
@@ -55,12 +71,15 @@ import { Video } from "../models/video.model.js";
 import {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     EMBEDDING_VERSION,
+    EmbeddingModelLoadError,
     EmbeddingUnavailableError,
     describeEmbeddingState,
     generateEmbedding,
     hasEmbeddingProvider,
     isSearchableEmbedding,
+    warmEmbeddingProvider,
 } from "../services/embedding.service.js";
 import {
     buildAnimeEmbeddingText,
@@ -212,10 +231,17 @@ async function processCollection({ label, Model, buildText, dryRun, force, batch
                     console.log(`    + embedded ${describeDoc(doc, isVideo)} — ${plan.reason}`);
                 }
             } catch (error) {
-                // An unconfigured provider is fatal for the whole run, not a
-                // per-document failure — continuing would emit one identical error
-                // per document and waste the operator's attention.
-                if (error instanceof EmbeddingUnavailableError) throw error;
+                // An unconfigured provider or an unloadable model is fatal for the
+                // whole run, not a per-document failure — continuing would emit one
+                // identical error per document and waste the operator's attention.
+                // A malformed-output or wrong-dimension error is genuinely
+                // per-document and is recorded below instead.
+                if (
+                    error instanceof EmbeddingUnavailableError ||
+                    error instanceof EmbeddingModelLoadError
+                ) {
+                    throw error;
+                }
 
                 report.failed += 1;
                 report.failures.push({ id: String(doc._id), label: describeDoc(doc, isVideo), reason: error.message });
@@ -306,6 +332,7 @@ const run = async () => {
 
     console.log(
         `${dryRun ? "DRY RUN — " : ""}Embedding backfill\n` +
+            `  provider   : ${EMBEDDING_PROVIDER}${EMBEDDING_PROVIDER === "local" ? " (in-process, no API key, no cost)" : ""}\n` +
             `  model      : ${EMBEDDING_MODEL} (${EMBEDDING_DIMENSIONS} dimensions)\n` +
             `  version    : ${EMBEDDING_VERSION}\n` +
             `  target     : ${target}\n` +
@@ -314,21 +341,50 @@ const run = async () => {
     );
 
     /**
-     * A real run without a key must stop before connecting or reading anything —
-     * failing on the first document instead would be noisier and no more informative.
-     * A dry run deliberately does not require the key: proving the text builders work
-     * against real data is exactly what it is for.
+     * A real run whose provider cannot produce vectors must stop before connecting or
+     * reading anything — failing on the first document instead would be noisier and no
+     * more informative. Under the local provider this is never the blocking case,
+     * since no credential is involved; it still guards an `openai` deployment with no
+     * key.
+     *
+     * A dry run deliberately does not require a working provider: proving the text
+     * builders work against real data is exactly what it is for.
      */
     if (!dryRun && !hasEmbeddingProvider()) {
         console.error(
-            "\nOPENAI_API_KEY is not configured, so no embeddings can be generated.\n" +
+            `\nThe "${EMBEDDING_PROVIDER}" embedding provider is not configured, so no embeddings can be generated.\n` +
                 "No fake or placeholder vectors will be written.\n" +
-                "Set OPENAI_API_KEY, or use --dry-run to preview what would be embedded."
+                "Set OPENAI_API_KEY, switch to EMBEDDING_PROVIDER=local, or use --dry-run to preview."
         );
         return 1;
     }
-    if (dryRun && !hasEmbeddingProvider()) {
-        console.log("\n  note       : no OPENAI_API_KEY set — dry run still previews text and decisions.");
+
+    /**
+     * Load the model BEFORE opening a cursor.
+     *
+     * Two reasons. A missing/corrupt download is a whole-run failure, and discovering
+     * it on document one would report it as that document's problem while 132 others
+     * queue behind it. And the load takes seconds — paying it inside the first
+     * document's timing would make the per-document progress output misleading.
+     *
+     * Skipped entirely for a dry run: loading weights is exactly the work a dry run
+     * exists to avoid, and it must remain able to preview decisions on a machine that
+     * has never downloaded the model.
+     */
+    if (!dryRun) {
+        try {
+            process.stdout.write(`\n  loading    : ${EMBEDDING_MODEL} ... `);
+            const startedAt = Date.now();
+            await warmEmbeddingProvider();
+            console.log(`ready in ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+        } catch (error) {
+            console.log("failed");
+            console.error(`\n${error.message}`);
+            console.error("\nNo embeddings were generated and nothing was written to MongoDB.");
+            return 1;
+        }
+    } else {
+        console.log("\n  note       : dry run — no model is loaded and no embedding is generated.");
     }
 
     /**
@@ -394,6 +450,7 @@ const run = async () => {
 
     if (dryRun) {
         console.log("\n  Nothing was written to MongoDB. No embeddings were generated.");
+        console.log("  No model was loaded and no vector was computed.");
         console.log(`  A real run would embed ${totalEmbedded} document(s).`);
         if (totalEmbedded) {
             console.log("  To apply: npm run backfill:embeddings");
@@ -411,7 +468,7 @@ let exitCode = 1;
 try {
     exitCode = await run();
 } catch (error) {
-    if (error instanceof EmbeddingUnavailableError) {
+    if (error instanceof EmbeddingUnavailableError || error instanceof EmbeddingModelLoadError) {
         console.error(`\n${error.message}`);
         console.error("No fake vectors were written.");
     } else {

@@ -37,7 +37,9 @@ import { EmbeddingUnavailableError } from "../config/embedding.config.js";
 import {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     EMBEDDING_VERSION,
+    EmbeddingModelLoadError,
     EmbeddingValidationError,
     activeEmbeddingIdentity,
     cosineSimilarity,
@@ -45,14 +47,18 @@ import {
     embeddingStatus,
     generateEmbedding,
     hasEmbeddingProvider,
+    hasOpenAIKey,
     isSearchableEmbedding,
+    warmEmbeddingProvider,
 } from "./embedding.service.js";
 
 // Re-exported so ai.controller.js and the backfill script have one import site.
 export {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     EMBEDDING_VERSION,
+    EmbeddingModelLoadError,
     EmbeddingUnavailableError,
     EmbeddingValidationError,
     activeEmbeddingIdentity,
@@ -61,7 +67,9 @@ export {
     embeddingStatus,
     generateEmbedding,
     hasEmbeddingProvider,
+    hasOpenAIKey,
     isSearchableEmbedding,
+    warmEmbeddingProvider,
 };
 
 /**
@@ -86,8 +94,25 @@ export class AIUnavailableError extends Error {
     }
 }
 
-/** Kept for backwards compatibility with existing callers of the old scaffold. */
-export const hasAI = () => hasEmbeddingProvider();
+/**
+ * Whether the OpenAI-backed features (chat, summary, tagging, sentiment,
+ * translation, transcription) can run.
+ *
+ * This now asks `hasOpenAIKey()` rather than `hasEmbeddingProvider()`, and the
+ * distinction is the whole reason the migration is safe.
+ *
+ * Until now the two were the same question, because embeddings were the only thing
+ * a key was needed for. With a local embedding provider `hasEmbeddingProvider()`
+ * is unconditionally true — so if these helpers kept using it, every chat and
+ * summary route would report itself available on a deployment with no key at all,
+ * then fail deep inside the OpenAI SDK. That is exactly the "looks configured, is
+ * not" failure this subsystem was rewritten to remove, reintroduced through the
+ * back door.
+ *
+ * Embeddings are local and free; everything else still needs credits. The two
+ * checks are now separate because they describe two independent capabilities.
+ */
+export const hasAI = () => hasOpenAIKey();
 
 let client = null;
 const getClient = (feature) => {
@@ -101,7 +126,8 @@ const getClient = (feature) => {
  * ------------------------------------------------------------------ */
 
 /**
- * Returns a bare 1536-float vector for the given text.
+ * Returns a bare vector for the given text, at the active provider's width — 384
+ * floats under the local provider, 1536 under OpenAI.
  *
  * Kept because the old `embedText` name is already imported by ai.controller.js.
  * Prefer `generateEmbedding`, which also returns the model/version/hash metadata

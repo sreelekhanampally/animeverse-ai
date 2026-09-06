@@ -8,8 +8,9 @@
  *
  * THE RULE THAT MATTERS
  * --------------------
- * When no API key is configured, this module throws. It does not return [], it
- * does not return a hash-derived vector, and it does not return a zero vector.
+ * When the active provider cannot produce a vector, this module throws. It does not
+ * return [], it does not return a hash-derived vector, and it does not return a
+ * zero vector.
  *
  * The old scaffold returned a 32-float hash vector in that case. That is worse
  * than useless: it looks like a working embedding, it stores like one, and it
@@ -17,53 +18,141 @@
  * easily mistake for weak-but-real relevance. A hash of a string carries no
  * semantic information at all — two paraphrases of the same sentence hash to
  * unrelated vectors, which is precisely the property semantic search exists to
- * avoid. Refusing to produce a vector is the only honest option, so an
- * unconfigured deployment reports "AI not configured" instead of quietly lying.
+ * avoid. Refusing to produce a vector is the only honest option.
+ *
+ * TWO PROVIDERS, ONE INTERFACE
+ * ----------------------------
+ * `generateEmbedding(text)` is the only way to obtain a vector, and its contract is
+ * unchanged from Session 1: a vector plus the provenance that must be stored with
+ * it. What changed underneath is that the numbers now come from whichever provider
+ * config/embedding.config.js names as active — `local` (all-MiniLM-L6-v2, 384
+ * dimensions, in-process, no key) or `openai` (text-embedding-3-small, 1536).
+ *
+ * Callers cannot tell which ran, and deliberately so: the backfill, the reindex
+ * controller and Session 2's query embedding all go through this one function, so
+ * a document vector and a query vector are guaranteed to come from the same model.
+ * That guarantee is the reason this dispatch lives here rather than at each call
+ * site.
  */
 
-import OpenAI from "openai";
 import {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
+    EMBEDDING_PROVIDER_CONFIG,
     EMBEDDING_VERSION,
+    EmbeddingModelLoadError,
     EmbeddingUnavailableError,
     EmbeddingValidationError,
     activeEmbeddingIdentity,
     hasEmbeddingProvider,
+    hasOpenAIKey,
 } from "../config/embedding.config.js";
+import {
+    embedTextLocally,
+    isLocalModelLoaded,
+    resetLocalEmbeddingModel,
+    warmLocalEmbeddingModel,
+} from "./localEmbedding.provider.js";
 import { hashEmbeddingText } from "../utils/embeddingText.js";
 
 export {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     EMBEDDING_VERSION,
+    EmbeddingModelLoadError,
     EmbeddingUnavailableError,
     EmbeddingValidationError,
     activeEmbeddingIdentity,
     hasEmbeddingProvider,
+    hasOpenAIKey,
 };
 
 /**
- * Lazily constructed, then cached.
+ * Lazily constructed, then cached. Only ever built under the `openai` provider.
  *
  * Not built at import time: the key is read from the environment when first
  * needed, so a test or script that loads this module without a key does not
  * explode on import, and the constructor is not paid for by requests that never
  * embed anything.
+ *
+ * The `openai` package is imported dynamically for the same reason the local
+ * runtime is — under the local provider it is never needed, and paying for the
+ * module graph of an unused SDK on every import is waste.
  */
 let client = null;
 
-const getClient = () => {
-    if (!hasEmbeddingProvider()) throw new EmbeddingUnavailableError();
+const getOpenAIClient = async () => {
+    if (!hasOpenAIKey()) throw new EmbeddingUnavailableError();
     if (!client) {
+        const { default: OpenAI } = await import("openai");
         client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
     }
     return client;
 };
 
-/** Test seam: forces the next call to rebuild the client after an env change. */
+/**
+ * Test seam: forces the next call to rebuild provider state after an env change.
+ *
+ * Resets both providers. A test that switches EMBEDDING_PROVIDER or removes a key
+ * would otherwise keep talking to whichever one was cached first, and a stale
+ * pipeline surviving between tests is exactly the kind of cross-test coupling that
+ * makes a suite pass in one order and fail in another.
+ */
 export const resetEmbeddingClient = () => {
     client = null;
+    resetLocalEmbeddingModel();
+};
+
+/**
+ * Loads whatever the active provider needs before the first document.
+ *
+ * Only the local provider has a meaningful warm-up (multi-second weight load); for
+ * OpenAI this verifies the key exists, which is the equivalent "fail before doing
+ * real work" check. Called by the backfill so a load failure is reported once, up
+ * front, rather than as a per-document error on document one.
+ */
+export async function warmEmbeddingProvider() {
+    if (EMBEDDING_PROVIDER === "local") {
+        await warmLocalEmbeddingModel();
+        return;
+    }
+    await getOpenAIClient();
+}
+
+/** Whether the provider is ready to embed without further setup work. */
+export const isEmbeddingProviderReady = () =>
+    EMBEDDING_PROVIDER === "local" ? isLocalModelLoaded() : Boolean(client);
+
+/**
+ * Produces a bare vector from the active provider, with no validation and no
+ * metadata. The single place where provider choice is made.
+ *
+ * Exhaustive by construction: an unrecognised provider throws rather than falling
+ * through to a default. config/embedding.config.js already rejects unknown names at
+ * import, so this is unreachable — which is precisely why it must not silently
+ * return something if a future provider is added to the config and not here.
+ */
+const embedWithActiveProvider = async (input) => {
+    switch (EMBEDDING_PROVIDER) {
+        case "local":
+            return embedTextLocally(input);
+
+        case "openai": {
+            const openai = await getOpenAIClient();
+            const response = await openai.embeddings.create({
+                model: EMBEDDING_MODEL,
+                input,
+            });
+            return response?.data?.[0]?.embedding;
+        }
+
+        default:
+            throw new EmbeddingUnavailableError(
+                `No embedding implementation for provider "${EMBEDDING_PROVIDER}".`
+            );
+    }
 };
 
 /**
@@ -183,12 +272,15 @@ export async function generateEmbedding(text) {
         throw new EmbeddingValidationError("Cannot embed empty text.");
     }
 
-    const response = await getClient().embeddings.create({
-        model: EMBEDDING_MODEL,
-        input,
-    });
+    // Guarded before any provider work so an unconfigured OpenAI deployment fails
+    // with "not configured" rather than an SDK error. Always true for `local`.
+    if (!hasEmbeddingProvider()) throw new EmbeddingUnavailableError();
 
-    const vector = assertFreshVector(response?.data?.[0]?.embedding);
+    // Re-validated against the ACTIVE config even though the local provider already
+    // checked its own width. The two checks answer different questions — "is this
+    // the local model's vector" and "is this the vector this deployment stores" —
+    // and only the second one protects the database.
+    const vector = assertFreshVector(await embedWithActiveProvider(input));
 
     return {
         embedding: vector,
@@ -235,11 +327,19 @@ export function cosineSimilarity(a, b) {
 
 /**
  * The AI subsystem's current state, for /ai/health and the backfill preamble.
- * Contains no secret: whether a key exists, never any part of its value.
+ *
+ * Contains no secret: whether a key exists, never any part of its value. The four
+ * Session 1 fields keep their names and meanings so existing consumers — including
+ * the /ai/health response shape — are unaffected; `provider` and `requiresApiKey`
+ * are added so "configured: true" is self-explaining rather than mysterious under
+ * a provider that has nothing to configure.
  */
 export const embeddingStatus = () => ({
     configured: hasEmbeddingProvider(),
     model: EMBEDDING_MODEL,
     dimensions: EMBEDDING_DIMENSIONS,
     version: EMBEDDING_VERSION,
+    provider: EMBEDDING_PROVIDER,
+    requiresApiKey: EMBEDDING_PROVIDER_CONFIG.requiresApiKey,
+    ready: isEmbeddingProviderReady(),
 });

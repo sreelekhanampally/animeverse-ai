@@ -118,4 +118,10 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+# Locally cached embedding model weights (~90MB of ONNX files for
+# sentence-transformers/all-MiniLM-L6-v2). Re-downloaded on demand from
+# huggingface.co, so it is a build artefact rather than source.
+backend/.model-cache/
+.model-cache/
+
 # End of https://mrkandreev.name/snippets/gitignore-generator/#Node
