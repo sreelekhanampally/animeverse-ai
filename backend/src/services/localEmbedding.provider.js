@@ -48,6 +48,8 @@
  * semantic search into confident nonsense.
  */
 
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import {
     EMBEDDING_DIMENSIONS,
     EMBEDDING_MODEL,
@@ -78,11 +80,28 @@ const LOCAL_DIMENSIONS = EMBEDDING_PROVIDERS.local.dimensions;
  * checkout is self-contained and the first run populates it. Resolved relative to
  * this file rather than to process.cwd() so a script run from the repository root
  * and one run from backend/ share a single cache instead of downloading twice.
+ *
+ * WHY fileURLToPath AND NOT `new URL(...).pathname`
+ * ------------------------------------------------
+ * `.pathname` returns a URL path, not a filesystem path, and the two differ on
+ * Windows in a way that breaks outright. For a file on C: it yields
+ * "/C:/Users/name/backend/.model-cache/" — note the leading slash before the drive
+ * letter. Windows resolves that against the current drive and tries to create
+ * "C:\C:\Users\name\...", which fails with ENOENT.
+ *
+ * `.pathname` is also percent-encoded, so any user directory containing a space
+ * arrives as "%20" and the download fails for a second, unrelated reason. On Linux
+ * neither problem shows up, which is exactly why this needed fixing after the fact.
+ *
+ * fileURLToPath is the API built for this conversion: it strips the spurious slash,
+ * decodes the escapes and emits native separators on every platform.
  */
 const resolveCacheDir = () => {
     const override = process.env[LOCAL_EMBEDDING_CACHE_DIR_ENV]?.trim();
-    if (override) return override;
-    return new URL("../../.model-cache/", import.meta.url).pathname;
+    // Resolved to an absolute path so a relative override behaves the same however
+    // the script was launched, rather than depending on the shell's cwd.
+    if (override) return path.resolve(override);
+    return fileURLToPath(new URL("../../.model-cache/", import.meta.url));
 };
 
 /**
