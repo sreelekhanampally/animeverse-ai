@@ -43,6 +43,8 @@ export function AppRoutes() {
                     <Route path="/watch/:videoId" element={<WatchPage />} />
                     {/* Public: /users/c/:username uses optionalJWT, so guests can browse channels */}
                     <Route path="/c/:username" element={<ChannelPage />} />
+                    <Route path={PATHS.aiSearch} element={<AiSearchPage />} />
+                    <Route path={PATHS.aiChat} element={<AiChatPage />} />
 
                     {/* Protected sections */}
                     <Route element={<ProtectedRoute />}>
@@ -56,8 +58,6 @@ export function AppRoutes() {
                         <Route path={PATHS.watchLater} element={<WatchLaterPage />} />
                         <Route path={PATHS.upload} element={<UploadVideoPage />} />
                         <Route path={PATHS.dashboard} element={<DashboardPage />} />
-                        <Route path={PATHS.aiSearch} element={<AiSearchPage />} />
-                        <Route path={PATHS.aiChat} element={<AiChatPage />} />
                         <Route path={PATHS.settings} element={<SettingsPage />} />
                     </Route>
                 </Route>

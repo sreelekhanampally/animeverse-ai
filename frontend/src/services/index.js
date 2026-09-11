@@ -82,10 +82,13 @@ export const statsService = {
     platform: () => apiClient.get("/stats"),
 };
 
-/* AI service — scaffolded for future sessions, not called in this session. */
+/* AI service — local semantic retrieval + grounded AnimeVerse chat. */
 export const aiService = {
     health: () => apiClient.get("/ai/health"),
+    // Backward-compatible legacy GET endpoint.
     search: (q, limit = 20) => apiClient.get("/ai/search", { params: { q, limit } }),
+    semanticSearch: (query, limit = 12) =>
+        apiClient.post("/ai/semantic-search", { query, limit }),
     chat: (messages) => apiClient.post("/ai/chat", { messages }),
     recommendations: (limit = 12) => apiClient.get("/ai/recommendations", { params: { limit } }),
 };

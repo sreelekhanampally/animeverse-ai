@@ -6,6 +6,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { buildVideoEmbeddingText } from "../utils/embeddingText.js";
+import { semanticVideoSearch } from "../services/semanticSearch.service.js";
+import { answerAnimeChat, describeChatProvider } from "../services/animeAssistant.service.js";
 import {
     summarizeVideo,
     askVideo,
@@ -165,60 +167,76 @@ export const askAboutVideo = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(200, { answer }, "OK"));
 });
 
-// GET /api/v1/ai/search?q=...
-export const semanticSearch = asyncHandler(async (req, res) => {
-    const q = (req.query.q || "").trim();
-    if (!q) throw new ApiError(400, "Query is required");
+const parseSearchInput = (query, rawLimit) => {
+    const q = String(query || "").trim();
+    if (q.length < 2 || q.length > 300) {
+        throw new ApiError(400, "Query must be between 2 and 300 characters");
+    }
 
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const parsedLimit = rawLimit == null ? 20 : Number(rawLimit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 20) {
+        throw new ApiError(400, "limit must be an integer between 1 and 20");
+    }
 
+    return { q, limit: parsedLimit };
+};
+
+const runSemanticSearch = async (q, limit) => {
     if (!hasEmbeddingProvider()) {
-        return respondUnavailable(
-            res,
-            "Semantic search requires OPENAI_API_KEY to be configured. No results can be produced without it."
-        );
+        return null;
+    }
+    return semanticVideoSearch(q, { limit });
+};
+
+// GET /api/v1/ai/search?q=...
+// Backward-compatible semantic search endpoint used by existing clients.
+export const semanticSearch = asyncHandler(async (req, res) => {
+    const { q, limit } = parseSearchInput(req.query.q, req.query.limit);
+    const payload = await runSemanticSearch(q, limit);
+
+    if (!payload) {
+        return respondUnavailable(res, "The local embedding provider is unavailable.");
     }
 
-    const { embedding: queryEmbedding } = await generateEmbedding(q);
+    const skipped = payload.diagnostics.skippedVideos;
+    return res.json(
+        new ApiResponse(
+            200,
+            payload.results,
+            skipped
+                ? `OK — ${skipped} video(s) skipped because their embeddings are stale or invalid.`
+                : "OK"
+        )
+    );
+});
 
-    // In-process cosine over published videos. The dataset is small, so this is
-    // deliberate — no vector database is involved.
-    const candidates = await Video.find({ isPublished: true })
-        .select(`${EMBEDDING_FIELDS} title description thumbnail views duration owner tags category createdAt sourceType externalVideoId`)
-        .populate("owner", "username fullName avatar")
-        .limit(500)
-        .lean();
+// POST /api/v1/ai/semantic-search  { query, limit }
+// Truthfully named API for the Session 2 UI. This is metadata-level semantic
+// discovery, not timestamp/scene retrieval.
+export const semanticSearchPost = asyncHandler(async (req, res) => {
+    const { q, limit } = parseSearchInput(req.body?.query, req.body?.limit ?? 12);
+    const payload = await runSemanticSearch(q, limit);
 
-    // Only vectors matching the active model/dimensions/version participate. Old
-    // 32-float vectors are skipped, not scored — and not deleted either.
-    let skipped = 0;
-    const scored = [];
-    for (const video of candidates) {
-        if (!isSearchableEmbedding(video)) {
-            skipped += 1;
-            continue;
-        }
-        const score = cosineSimilarity(queryEmbedding, video.embedding);
-        if (score === null) {
-            skipped += 1;
-            continue;
-        }
-        scored.push({ ...stripEmbedding(video), score });
+    if (!payload) {
+        return respondUnavailable(res, "The local embedding provider is unavailable.");
     }
-
-    scored.sort((a, b) => b.score - a.score);
 
     return res.json(
         new ApiResponse(
             200,
-            scored.slice(0, limit),
-            // Surfaced so an operator can see "0 results" is a missing-index problem
-            // rather than a genuinely empty match.
-            skipped
-                ? `OK — ${skipped} video(s) skipped: no valid embedding. Run: npm run backfill:embeddings`
-                : "OK"
+            { query: q, results: payload.results, diagnostics: payload.diagnostics },
+            "Semantic search complete"
         )
     );
+});
+
+// POST /api/v1/ai/chat  { messages: [{ role, content }] }
+// Grounded against AnimeVerse metadata. It uses local Ollama when available and
+// falls back to a deterministic retrieval answer, so no paid API is required.
+export const animeChat = asyncHandler(async (req, res) => {
+    const messages = req.body?.messages;
+    const result = await answerAnimeChat(messages);
+    return res.json(new ApiResponse(200, result, "AnimeVerse assistant response"));
 });
 
 // GET /api/v1/ai/recommendations
@@ -427,6 +445,7 @@ export const aiHealth = asyncHandler(async (req, res) => {
                     dimensions: status.dimensions,
                     version: status.version,
                 },
+                chat: describeChatProvider(),
             },
             // The embedding path is what the AI features are built on, and it is
             // configured. A missing chat key is reported in `openai` rather than by
@@ -434,7 +453,7 @@ export const aiHealth = asyncHandler(async (req, res) => {
             status.configured
                 ? openaiConfigured
                     ? "OK"
-                    : "OK — embeddings are configured; OPENAI_API_KEY is missing, so chat, summaries, tagging and transcription are unavailable."
+                    : "OK — local embeddings and AnimeVerse chat are available without a paid API; legacy OpenAI-only summary, tagging and transcription features remain unavailable."
                 : "AI is not configured"
         )
     );

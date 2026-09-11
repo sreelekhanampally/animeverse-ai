@@ -10,7 +10,7 @@
     "ingest:anime": "node src/scripts/ingestAnime.js",
     "ingest:youtube": "node src/scripts/ingestYouTube.js",
     "backfill:embeddings": "node src/scripts/backfillEmbeddings.js",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test"
   },
   "keywords": [
     "animeverse",
