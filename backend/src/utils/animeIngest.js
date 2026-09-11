@@ -1,10 +1,10 @@
 /**
  * Anime ingestion.
  *
- * Turns AniList payloads into Anime documents. Kept separate from both the
- * AniList client (which only fetches) and the CLI script (which only handles
- * argv and printing) so the ingestion logic can be called from a job or an
- * authenticated admin route later without dragging either along.
+ * Turns upstream metadata payloads into Anime documents. AniList is preferred;
+ * Jikan/MyAnimeList is an outage fallback. Kept separate from fetch clients and
+ * CLI scripts so persistence rules are shared and testable without dragging
+ * argv/printing concerns along.
  *
  * Idempotency is the whole point of this module: running it twice must produce
  * the same collection, never duplicates.
@@ -18,6 +18,10 @@ import {
     searchAnime,
 } from "../services/anilist.service.js";
 import { POPULAR_ANIME_IDS } from "../seeds/popularAnime.js";
+import {
+    fetchPopularAnimeFromJikan,
+    mapJikanAnimeToAnime,
+} from "../services/jikan.service.js";
 
 /**
  * Upserts one AniList payload.
@@ -35,8 +39,16 @@ import { POPULAR_ANIME_IDS } from "../seeds/popularAnime.js";
 export async function upsertAnimeFromMedia(media) {
     const doc = mapAniListMediaToAnime(media);
 
+    // Jikan fallback documents use a deterministic negative surrogate in
+    // `anilistId` but retain the real MyAnimeList id. If AniList later recovers,
+    // matching by malId promotes that same document instead of creating a second
+    // copy of the anime under the real positive AniList id.
+    const identity = doc.malId
+        ? { $or: [{ anilistId: doc.anilistId }, { malId: doc.malId }] }
+        : { anilistId: doc.anilistId };
+
     const result = await Anime.findOneAndUpdate(
-        { anilistId: doc.anilistId },
+        identity,
         { $set: doc },
         {
             upsert: true,
@@ -186,4 +198,116 @@ export async function ingestTrendingFromAniList({ limit = 50, onProgress } = {})
     }
 
     return ingestMediaList(collected.slice(0, limit), { onProgress });
+}
+
+
+/**
+ * Upserts one Jikan/MyAnimeList payload without downgrading richer AniList data.
+ *
+ * Existing AniList-backed documents win whenever the MAL id matches. Jikan is a
+ * fallback source, not an authority that should erase AniList characters/banner
+ * metadata merely because AniList is temporarily unavailable.
+ */
+export async function upsertAnimeFromJikan(item) {
+    const doc = mapJikanAnimeToAnime(item);
+
+    const existing = await Anime.findOne({
+        $or: [{ malId: doc.malId }, { anilistId: doc.anilistId }],
+    }).select("anilistId malId metadataSource title");
+
+    if (existing?.metadataSource === "anilist" && Number(existing.anilistId) > 0) {
+        return {
+            created: false,
+            updated: false,
+            skipped: true,
+            anime: existing,
+            anilistId: existing.anilistId,
+            malId: doc.malId,
+            title: existing?.title?.display || doc.title.display,
+            reason: "existing AniList metadata preserved",
+        };
+    }
+
+    const filter = existing?._id
+        ? { _id: existing._id }
+        : { anilistId: doc.anilistId };
+
+    const result = await Anime.findOneAndUpdate(
+        filter,
+        { $set: doc },
+        {
+            upsert: true,
+            new: true,
+            runValidators: true,
+            setDefaultsOnInsert: true,
+            includeResultMetadata: true,
+        }
+    );
+
+    const created = Boolean(result?.lastErrorObject?.upserted);
+    return {
+        created,
+        updated: !created,
+        skipped: false,
+        anime: result?.value || null,
+        anilistId: doc.anilistId,
+        malId: doc.malId,
+        title: doc.title.display,
+    };
+}
+
+/**
+ * Imports Jikan's popularity ranking as outage-safe reference metadata.
+ * Sequential writes make the report deterministic and ensure one malformed row
+ * cannot abort the remaining catalogue expansion.
+ */
+export async function ingestPopularFromJikan({ limit = 160, onProgress } = {}) {
+    const media = await fetchPopularAnimeFromJikan({ limit });
+    const report = {
+        requested: media.length,
+        imported: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        failures: [],
+        items: [],
+    };
+
+    for (const item of media) {
+        const malId = Number(item?.mal_id) || null;
+        try {
+            const outcome = await upsertAnimeFromJikan(item);
+            if (outcome.skipped) report.skipped += 1;
+            else if (outcome.created) report.imported += 1;
+            else report.updated += 1;
+
+            const action = outcome.skipped
+                ? "skipped"
+                : outcome.created
+                  ? "imported"
+                  : "updated";
+
+            report.items.push({
+                malId: outcome.malId,
+                anilistId: outcome.anilistId,
+                title: outcome.title,
+                action,
+                reason: outcome.reason || "",
+            });
+            onProgress?.({
+                status: "success",
+                action,
+                malId: outcome.malId,
+                anilistId: outcome.anilistId,
+                title: outcome.title,
+                reason: outcome.reason || "",
+            });
+        } catch (error) {
+            report.failed += 1;
+            report.failures.push({ malId, reason: error.message });
+            onProgress?.({ status: "failed", malId, reason: error.message });
+        }
+    }
+
+    return report;
 }

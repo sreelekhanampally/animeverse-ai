@@ -929,7 +929,7 @@ export function computeSlots({ perAnime, existingCount, totalCap = false, ceilin
  * Resolves which anime to ingest for. Never calls AniList — Phase 2 owns that, and
  * this reads the existing collection only.
  */
-export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0 } = {}) {
+export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0, metadataSource } = {}) {
     if (animeId) {
         if (!mongoose.isValidObjectId(animeId)) {
             throw new Error(`"${animeId}" is not a valid Mongo ObjectId`);
@@ -954,8 +954,12 @@ export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0
     }
 
     // Default: most popular first, so a conservative run covers recognisable series.
-    return Anime.find()
-        .sort({ popularity: -1 })
+    // A metadata-source filter is useful during an AniList outage: after Jikan
+    // adds new fallback documents, catalogue growth can target those new rows
+    // directly instead of spending a 40-anime batch on already-full AniList rows.
+    const filter = metadataSource ? { metadataSource: String(metadataSource) } : {};
+    return Anime.find(filter)
+        .sort({ popularity: -1, _id: 1 })
         .skip(Math.max(0, Number(offset) || 0))
         .limit(Number(limit) || 10);
 }

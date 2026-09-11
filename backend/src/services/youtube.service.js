@@ -9,11 +9,11 @@
  * The API key is read from the environment on the server and never leaves it: no
  * function here returns the key, logs it, or puts it in a document.
  *
- * Quota is the real constraint, not rate limiting. On the default 10,000 units/day:
- *   search.list  = 100 units  (expensive)
- *   videos.list  =   1 unit   (cheap, and accepts 50 ids per call)
- * So 1 search costs as much as 100 detail lookups. Everything below is shaped
- * around minimising searches and batching detail lookups.
+ * Quota is the real constraint, not rate limiting. Since YouTube's June 2026
+ * granular-quota change, search.list has its own default bucket of 100 calls/day
+ * and each call costs 1 search-quota unit. videos.list remains in the regular
+ * bucket at 1 unit per call (up to 50 ids). Everything below still minimises
+ * searches because the search-call bucket is now the tightest ingestion limit.
  */
 
 const YOUTUBE_API_BASE = process.env.YOUTUBE_API_BASE || "https://www.googleapis.com/youtube/v3";
@@ -22,8 +22,8 @@ const REQUEST_TIMEOUT_MS = Number(process.env.YOUTUBE_TIMEOUT_MS || 20000);
 // videos.list accepts up to 50 ids per request — one unit for fifty videos.
 export const YOUTUBE_MAX_IDS_PER_CALL = 50;
 
-// Documented quota costs, used only for the run's cost estimate in the CLI output.
-export const QUOTA_COST = { search: 100, videos: 1 };
+// Current documented per-call costs. search.list is charged to its own bucket.
+export const QUOTA_COST = { search: 1, videos: 1 };
 
 /**
  * Thrown when the API reports quota exhaustion. A distinct class so the ingestion
@@ -58,12 +58,12 @@ const getApiKey = () => {
 };
 
 /** Simple counters so the CLI can report how much quota a run actually spent. */
-const usage = { search: 0, videos: 0, quotaUnits: 0 };
+const usage = { search: 0, videos: 0, regularQuotaUnits: 0 };
 export const getQuotaUsage = () => ({ ...usage });
 export const resetQuotaUsage = () => {
     usage.search = 0;
     usage.videos = 0;
-    usage.quotaUnits = 0;
+    usage.regularQuotaUnits = 0;
 };
 
 /**
@@ -161,7 +161,6 @@ export async function searchVideos(query, { maxResults = 10, order = "relevance"
     });
 
     usage.search += 1;
-    usage.quotaUnits += QUOTA_COST.search;
 
     return (payload.items || [])
         .map((item) => ({
@@ -194,7 +193,7 @@ export async function getVideoDetails(videoIds) {
         });
 
         usage.videos += 1;
-        usage.quotaUnits += QUOTA_COST.videos;
+        usage.regularQuotaUnits += QUOTA_COST.videos;
 
         items.push(...(payload.items || []));
     }

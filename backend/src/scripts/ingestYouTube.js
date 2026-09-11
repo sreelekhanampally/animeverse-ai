@@ -162,9 +162,12 @@ function printSummary(report, { dryRun }) {
         }
     }
 
+    console.log(`\n  YouTube quota usage:`);
     console.log(
-        `\n  API quota spent      : ~${usage.quotaUnits} units ` +
-            `(${usage.search} search x ${QUOTA_COST.search} + ${usage.videos} videos.list x ${QUOTA_COST.videos})`
+        `    search.list        : ${usage.search} call(s) from the dedicated search bucket`
+    );
+    console.log(
+        `    videos.list        : ${usage.videos} call(s), ~${usage.regularQuotaUnits} regular quota unit(s)`
     );
     if (report.quotaExhausted) console.log("  Run stopped early: quota exhausted.");
     if (dryRun) console.log("\n  Nothing was written to MongoDB.");
@@ -190,6 +193,10 @@ const run = async () => {
     );
     const limit = Math.max(1, Math.min(Number(args.limit) || 10, 200));
     const offset = Math.max(0, Math.min(Number(args.offset) || 0, 5000));
+    const metadataSource =
+        args["metadata-source"] && args["metadata-source"] !== true
+            ? String(args["metadata-source"]).trim().toLowerCase()
+            : undefined;
 
     // Fail before connecting to anything if the key is absent — the exact message
     // the brief requires.
@@ -213,12 +220,15 @@ const run = async () => {
         animeId: args["anime-id"] && args["anime-id"] !== true ? String(args["anime-id"]) : undefined,
         limit,
         offset,
+        metadataSource,
     });
 
     if (!animeList.length) {
         console.error(
             "Anime metadata not found. Run AniList ingestion first (npm run ingest:anime)." +
-                (args.anime || args["anime-id"] ? " No Anime document matched the given filter." : "")
+                (args.anime || args["anime-id"] || metadataSource
+                    ? " No Anime document matched the given filter."
+                    : "")
         );
         return 1;
     }
@@ -226,13 +236,16 @@ const run = async () => {
     resetQuotaUsage();
 
     console.log(
-        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime${offset ? ` (popularity offset ${offset})` : ""} x ` +
+        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime${offset ? ` (popularity offset ${offset})` : ""}${metadataSource ? ` [metadataSource=${metadataSource}]` : ""} x ` +
             (totalCap
                 ? `up to ${perAnime} TOTAL video(s) each (top-up mode)`
                 : `up to ${perAnime} new video(s) each (ceiling ${MAX_VIDEOS_PER_ANIME} total)`) +
             `, ${queriesPerAnime} query template(s) each (starting at template ${queryOffset + 1}).`
     );
-    console.log(`Estimated worst-case quota: ~${animeList.length * (queriesPerAnime * QUOTA_COST.search + QUOTA_COST.videos)} units.`);
+    console.log(
+        `Estimated worst-case quota: ${animeList.length * queriesPerAnime} search.list call(s) ` +
+            `from the dedicated search bucket + ~${animeList.length * QUOTA_COST.videos} regular unit(s) for videos.list.`
+    );
     console.log(`Blocked terms: ${BLOCKED_TERMS.length} (${BLOCKED_TERMS.slice(0, 4).join(", ")}, ...)`);
 
     let ownerId = null;

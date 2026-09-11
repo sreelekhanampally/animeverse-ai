@@ -2,7 +2,8 @@ import mongoose, { Schema } from "mongoose";
 import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 /**
- * Canonical anime metadata imported from AniList.
+ * Canonical anime metadata. AniList is the preferred source; Jikan/MyAnimeList is
+ * an outage fallback for catalogue expansion.
  *
  * This collection is *reference data*, not user-generated content: a document
  * describes a series (Attack on Titan), while a Video describes a piece of
@@ -56,9 +57,12 @@ const characterSchema = new Schema(
 const animeSchema = new Schema(
     {
         /**
-         * External identity. Every ingestion decision (insert vs update) is made
-         * on this field, never on the title — titles are not unique on AniList
-         * ("Fruits Basket" exists three times) and can be edited upstream.
+         * Preferred external identity. Real AniList documents use their positive
+         * AniList id. During an AniList outage, Jikan-only rows use a deterministic
+         * negative surrogate derived from malId so the existing unique index remains
+         * safe without a live index migration. When AniList returns, animeIngest
+         * matches malId and promotes the same row to its real positive AniList id.
+         * Titles are never used as identity because they are not unique.
          */
         anilistId: {
             type: Number,
@@ -67,8 +71,8 @@ const animeSchema = new Schema(
             index: true,
         },
 
-        // MyAnimeList id, when AniList knows it. Useful later for cross-referencing;
-        // frequently null, so it is never treated as an identity.
+        // MyAnimeList id. AniList may provide it; Jikan always does. It is also the
+        // bridge used to reconcile a temporary Jikan row when AniList recovers.
         malId: { type: Number, default: null },
 
         /**
@@ -84,8 +88,8 @@ const animeSchema = new Schema(
             display: { type: String, required: true, index: true },
         },
 
-        // Plain text. AniList descriptions arrive with <br>/<i> markup, which is
-        // stripped during mapping so this is safe to render anywhere.
+        // Plain text. Provider markup is stripped during mapping so this is safe
+        // to render anywhere.
         description: { type: String, default: "" },
 
         genres: { type: [String], default: [], index: true },
@@ -129,8 +133,9 @@ const animeSchema = new Schema(
         },
         startYear: { type: Number, default: null },
 
-        // Provenance. Lets a later re-sync find stale documents without guessing
-        // from `updatedAt`, which also changes when unrelated fields are touched.
+        // Provenance. `anilist` is preferred; `jikan` marks outage-fallback rows.
+        // This lets growth target new fallback rows and prevents Jikan refreshes
+        // from overwriting richer AniList metadata.
         metadataSource: { type: String, default: "anilist" },
         lastSyncedAt: { type: Date, default: Date.now },
 

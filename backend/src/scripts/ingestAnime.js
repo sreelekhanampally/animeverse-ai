@@ -146,11 +146,14 @@ const run = async () => {
         printReport(report, { label: "AniList ingestion — popular seed" });
     }
 
-    const total = await Anime.countDocuments();
-    const distinct = (await Anime.distinct("anilistId")).length;
+    const [total, anilistBacked, jikanBacked] = await Promise.all([
+        Anime.countDocuments(),
+        Anime.countDocuments({ metadataSource: "anilist" }),
+        Anime.countDocuments({ metadataSource: "jikan" }),
+    ]);
     console.log(`  Anime documents in DB : ${total}`);
-    console.log(`  Distinct anilistIds   : ${distinct}`);
-    console.log(`  Duplicates            : ${total - distinct}`);
+    console.log(`  AniList-backed        : ${anilistBacked}`);
+    console.log(`  Jikan fallback        : ${jikanBacked}`);
     line("=");
 
     return report.failed > 0 ? 1 : 0;
