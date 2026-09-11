@@ -1,6 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
+import { Video } from "../models/video.model.js";
 import { uploadOnCloudinary, deleteFromCloudinary, getPublicIdFromUrl } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { cookieOptions } from "../utils/cookieOptions.js";
@@ -585,69 +586,175 @@ const getUserChannelProfile = asyncHandler(async (req,res) => {
     
 });
 
-const getWatchHistory = asyncHandler(async (req, res) => {
-    const user = await User.aggregate([
+/**
+ * Hydrate a user-owned ordered list of video ids without losing that order.
+ *
+ * MongoDB `$in` does not preserve the order of the input array, which was the
+ * reason Watch History appeared random even though `User.watchHistory` itself
+ * was maintained newest-first. Build the card shape once, then reorder in JS
+ * from the authoritative id array.
+ */
+const hydrateOrderedVideos = async (ids = []) => {
+    const orderedIds = ids.map((id) => String(id));
+    if (!orderedIds.length) return [];
+
+    const objectIds = orderedIds
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+
+    const docs = await Video.aggregate([
         {
             $match: {
-                _id: new mongoose.Types.ObjectId(req.user._id)
-            }
+                _id: { $in: objectIds },
+                isPublished: true,
+            },
         },
         {
             $lookup: {
-                from: "videos",
-                localField: "watchHistory",
+                from: "users",
+                localField: "owner",
                 foreignField: "_id",
-                as: "watchHistory",
+                as: "owner",
                 pipeline: [
-                    {
-                        $lookup: {
-                            from: "users",
-                            localField: "owner",
-                            foreignField: "_id",
-                            as: "owner",
-                            pipeline: [
-                                {
-                                    $project: {
-                                        fullName: 1,
-                                        username: 1,
-                                        avatar: 1
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        $addFields: {   // <-- addFields (plural)
-                            owner: {
-                                $first: "$owner"
-                            },
-                            // Watch history renders the same video cards, so it gets
-                            // the same source normalisation for legacy documents.
-                            sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
-                            externalVideoId: { $ifNull: ["$externalVideoId", ""] }
-                        }
-                    },
-                    {
-                        $project: {
-                            __v: 0,
-                            embedding: 0
-                        }
-                    }
-                ]
-            }
-        }
+                    { $project: { fullName: 1, username: 1, avatar: 1 } },
+                ],
+            },
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "video",
+                as: "likes",
+            },
+        },
+        {
+            $lookup: {
+                from: "comments",
+                localField: "_id",
+                foreignField: "video",
+                as: "comments",
+            },
+        },
+        {
+            $addFields: {
+                owner: { $first: "$owner" },
+                likesCount: { $size: "$likes" },
+                commentsCount: { $size: "$comments" },
+                sourceType: { $ifNull: ["$sourceType", "cloudinary"] },
+                externalVideoId: { $ifNull: ["$externalVideoId", ""] },
+            },
+        },
+        {
+            $project: {
+                __v: 0,
+                likes: 0,
+                comments: 0,
+                embedding: 0,
+                embeddingModel: 0,
+                embeddingDimensions: 0,
+                embeddingVersion: 0,
+                embeddingGeneratedAt: 0,
+                embeddingTextHash: 0,
+            },
+        },
     ]);
+
+    const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+    return orderedIds.map((id) => byId.get(id)).filter(Boolean);
+};
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id).select("watchHistory").lean();
+    if (!user) throw new ApiError(404, "User not found");
+
+    const history = await hydrateOrderedVideos(user.watchHistory || []);
+
+    return res.status(200).json(
+        new ApiResponse(200, history, "Watch history fetched successfully")
+    );
+});
+
+const removeFromWatchHistory = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video id");
+    }
+
+    await User.updateOne(
+        { _id: req.user._id },
+        { $pull: { watchHistory: new mongoose.Types.ObjectId(videoId) } }
+    );
+
+    return res.status(200).json(
+        new ApiResponse(200, { videoId }, "Video removed from watch history")
+    );
+});
+
+const clearWatchHistory = asyncHandler(async (req, res) => {
+    await User.updateOne(
+        { _id: req.user._id },
+        { $set: { watchHistory: [] } }
+    );
+
+    return res.status(200).json(
+        new ApiResponse(200, [], "Watch history cleared")
+    );
+});
+
+const getWatchLater = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id).select("watchLater").lean();
+    if (!user) throw new ApiError(404, "User not found");
+
+    const videos = await hydrateOrderedVideos(user.watchLater || []);
+    return res.status(200).json(
+        new ApiResponse(200, videos, "Watch later fetched successfully")
+    );
+});
+
+/**
+ * One-click Watch Later toggle.
+ *
+ * A single endpoint keeps every card/action button race-safe from the client's
+ * point of view: the server returns the authoritative saved state after the
+ * write, and the list is bounded to 500 ids so it cannot grow forever.
+ */
+const toggleWatchLater = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video id");
+    }
+
+    const videoObjectId = new mongoose.Types.ObjectId(videoId);
+    const video = await Video.findOne({ _id: videoObjectId, isPublished: true })
+        .select("_id")
+        .lean();
+    if (!video) throw new ApiError(404, "Video not found");
+
+    const user = await User.findById(req.user._id).select("watchLater");
+    if (!user) throw new ApiError(404, "User not found");
+
+    const alreadySaved = (user.watchLater || []).some((id) => id.equals(videoObjectId));
+
+    if (alreadySaved) {
+        user.watchLater = user.watchLater.filter((id) => !id.equals(videoObjectId));
+    } else {
+        user.watchLater = [
+            videoObjectId,
+            ...(user.watchLater || []).filter((id) => !id.equals(videoObjectId)),
+        ].slice(0, 500);
+    }
+
+    await user.save({ validateBeforeSave: false });
 
     return res.status(200).json(
         new ApiResponse(
             200,
-            user[0].watchHistory,
-            "Watch history fetched successfully"
+            { videoId, isSaved: !alreadySaved, watchLaterCount: user.watchLater.length },
+            alreadySaved ? "Removed from Watch Later" : "Saved to Watch Later"
         )
     );
 });
-
-
 
 /**
  * The switches a client is allowed to set, and therefore the single place this
@@ -784,6 +891,10 @@ export { registerUser,
     updateUserCoverImage,
     getUserChannelProfile,
     getWatchHistory,
+    removeFromWatchHistory,
+    clearWatchHistory,
+    getWatchLater,
+    toggleWatchLater,
     getNotificationPreferences,
     updateNotificationPreferences,
     markNotificationsRead,

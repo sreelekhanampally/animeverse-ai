@@ -59,11 +59,24 @@ export const createPost = asyncHandler(async (req, res) => {
     const { type = "discussion", title, content, imageUrl, fanClub, pollOptions, pollClosesAt } = req.body;
     if (!title?.trim()) throw new ApiError(400, "Title is required");
 
+    let safeImageUrl = "";
+    if (imageUrl) {
+        try {
+            const parsed = new URL(String(imageUrl));
+            if (!["http:", "https:"].includes(parsed.protocol)) {
+                throw new Error("unsupported protocol");
+            }
+            safeImageUrl = parsed.toString();
+        } catch {
+            throw new ApiError(400, "Image URL must be a valid http(s) URL");
+        }
+    }
+
     const doc = {
         type,
         title: title.trim(),
         content: content?.trim() || "",
-        imageUrl: imageUrl || "",
+        imageUrl: safeImageUrl,
         author: req.user._id,
     };
     if (fanClub && isValidObjectId(fanClub)) doc.fanClub = fanClub;
@@ -100,7 +113,24 @@ export const listPosts = asyncHandler(async (req, res) => {
                 pipeline: [{ $project: { username: 1, avatar: 1, fullName: 1 } }],
             },
         },
-        { $addFields: { author: { $first: "$author" }, upvoteCount: { $size: "$upvotes" } } },
+        {
+            $addFields: {
+                author: { $first: "$author" },
+                upvoteCount: { $size: "$upvotes" },
+                pollOptions: {
+                    $map: {
+                        input: "$pollOptions",
+                        as: "option",
+                        in: {
+                            text: "$$option.text",
+                            votes: { $size: { $ifNull: ["$$option.voters", []] } },
+                        },
+                    },
+                },
+            },
+        },
+        // Raw voter ids and raw upvote ids are internal relationship data; the
+        // feed only needs aggregate counts.
         { $project: { upvotes: 0 } },
     ]);
 

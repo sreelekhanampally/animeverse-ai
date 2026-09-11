@@ -39,6 +39,20 @@ const userSchema = new Schema({
                 ref: "Video"
             }
         ],
+        /**
+         * Explicit saved queue for the Watch Later page.
+         *
+         * This is intentionally separate from playlists: Watch Later is a
+         * first-class personal queue with one-click add/remove semantics, while
+         * playlists are named collections. New saves are placed at the front so
+         * the page can render most-recently-saved first without a second model.
+         */
+        watchLater: [
+            {
+                type: Schema.Types.ObjectId,
+                ref: "Video"
+            }
+        ],
         password: {
             type: String,
             required: [true, 'Password is required']

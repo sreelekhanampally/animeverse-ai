@@ -1,7 +1,7 @@
 {
   "name": "animeverse-ai-backend",
   "version": "1.0.0",
-  "description": "AnimeVerse AI backend — anime video + community platform with AI features",
+  "description": "AnimeVerse AI backend \u2014 anime video + community platform with AI features",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -10,7 +10,9 @@
     "ingest:anime": "node src/scripts/ingestAnime.js",
     "ingest:youtube": "node src/scripts/ingestYouTube.js",
     "backfill:embeddings": "node src/scripts/backfillEmbeddings.js",
-    "test": "node --test"
+    "test": "node --test",
+    "grow:catalog": "node src/scripts/growCatalog.js",
+    "seed:community": "node src/scripts/seedCommunity.js"
   },
   "keywords": [
     "animeverse",

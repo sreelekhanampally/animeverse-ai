@@ -15,7 +15,9 @@ const getAllVideos = asyncHandler(async (req, res) => {
         query,
         sortBy,
         sortType,
-        userId
+        userId,
+        sourceType,
+        genre
     } = req.query;
 
     const pageNumber = Math.max(1, Number(page) || 1);
@@ -41,6 +43,30 @@ const getAllVideos = asyncHandler(async (req, res) => {
                 }
             }
         ];
+    }
+
+    // Filter by media source. Used by the homepage to surface creator uploads
+    // separately from externally hosted YouTube embeds.
+    if (sourceType) {
+        if (!["youtube", "cloudinary"].includes(sourceType)) {
+            throw new ApiError(400, "sourceType must be youtube or cloudinary");
+        }
+        if (sourceType === "cloudinary") {
+            // Legacy creator uploads predate sourceType, so missing is Cloudinary.
+            matchStage.$and = [
+                ...(matchStage.$and || []),
+                { $or: [{ sourceType: "cloudinary" }, { sourceType: { $exists: false } }] },
+            ];
+        } else {
+            matchStage.sourceType = "youtube";
+        }
+    }
+
+    // YouTube ingestion stamps canonical AniList genres into tags, lower-cased.
+    // Exact array membership makes the homepage genre chips meaningful without
+    // adding a second query system or fuzzy regex over every request.
+    if (genre?.trim() && genre.trim().toLowerCase() !== "all") {
+        matchStage.tags = genre.trim().toLowerCase();
     }
 
     // Filter by owner
@@ -409,30 +435,45 @@ const getVideoById = asyncHandler(async (req, res) => {
         throw new ApiError(404, "Video not found");
     }
 
-    // Increment view + update user watch history (fire-and-forget)
+    // Increment the public view count independently; a failed counter must never
+    // prevent playback.
     Video.updateOne({ _id: videoId }, { $inc: { views: 1 } }).catch(() => {});
+
     if (req.user?._id) {
-        User.updateOne(
+        const watchedId = new mongoose.Types.ObjectId(videoId);
+
+        /**
+         * Keep watch history newest-first in ONE atomic update. The previous
+         * pull-then-push pair could interleave when a user opened videos quickly,
+         * and `$lookup` later discarded array order anyway. The read endpoint now
+         * preserves this array exactly, so index 0 is always the most recent view.
+         */
+        await User.updateOne(
             { _id: req.user._id },
-            {
-                $pull: { watchHistory: new mongoose.Types.ObjectId(videoId) },
-            }
-        )
-            .then(() =>
-                User.updateOne(
-                    { _id: req.user._id },
-                    {
-                        $push: {
-                            watchHistory: {
-                                $each: [new mongoose.Types.ObjectId(videoId)],
-                                $position: 0,
-                                $slice: 200,
-                            },
+            [
+                {
+                    $set: {
+                        watchHistory: {
+                            $slice: [
+                                {
+                                    $concatArrays: [
+                                        [watchedId],
+                                        {
+                                            $filter: {
+                                                input: { $ifNull: ["$watchHistory", []] },
+                                                as: "historyId",
+                                                cond: { $ne: ["$$historyId", watchedId] },
+                                            },
+                                        },
+                                    ],
+                                },
+                                200,
+                            ],
                         },
-                    }
-                )
-            )
-            .catch(() => {});
+                    },
+                },
+            ]
+        );
     }
 
     return res.status(200).json(new ApiResponse(200, video[0], "Video fetched successfully"));

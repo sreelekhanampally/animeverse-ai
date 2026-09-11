@@ -776,10 +776,10 @@ export function buildTags(anime) {
     const display = anime?.title?.display || "";
     if (display) tags.add(display.toLowerCase());
     tags.add("anime");
-    for (const genre of (anime?.genres || []).slice(0, 3)) {
+    for (const genre of (anime?.genres || []).slice(0, 6)) {
         if (genre) tags.add(String(genre).toLowerCase());
     }
-    return [...tags].slice(0, 6);
+    return [...tags].slice(0, 8);
 }
 
 /**
@@ -881,10 +881,10 @@ export async function loadExistingYouTubeIds() {
  *
  * A ceiling is kept even in per-run mode because that is the mode an operator gets
  * by default, and "the default cannot run away" is worth more than the extra videos
- * a large run might otherwise add. 6 matches the largest count the current dataset
- * legitimately reached.
+ * a large run might otherwise add. 15 keeps the catalogue broad enough for discovery while still preventing an
+ * accidental ingestion loop from growing one title without bound.
  */
-export const MAX_VIDEOS_PER_ANIME = 6;
+export const MAX_VIDEOS_PER_ANIME = 15;
 
 /**
  * How many YouTube videos each anime already has stored.
@@ -929,7 +929,7 @@ export function computeSlots({ perAnime, existingCount, totalCap = false, ceilin
  * Resolves which anime to ingest for. Never calls AniList — Phase 2 owns that, and
  * this reads the existing collection only.
  */
-export async function resolveTargetAnime({ animeName, animeId, limit } = {}) {
+export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0 } = {}) {
     if (animeId) {
         if (!mongoose.isValidObjectId(animeId)) {
             throw new Error(`"${animeId}" is not a valid Mongo ObjectId`);
@@ -954,14 +954,17 @@ export async function resolveTargetAnime({ animeName, animeId, limit } = {}) {
     }
 
     // Default: most popular first, so a conservative run covers recognisable series.
-    return Anime.find().sort({ popularity: -1 }).limit(Number(limit) || 10);
+    return Anime.find()
+        .sort({ popularity: -1 })
+        .skip(Math.max(0, Number(offset) || 0))
+        .limit(Number(limit) || 10);
 }
 
 /**
  * The ingestion run.
  *
- * Flow per anime: build queries -> search (discovery) -> dedupe ids -> ONE batched
- * videos.list for authoritative metadata -> filter -> insert. Deduplicating before
+ * Flow per anime: build queries -> search (discovery) -> dedupe ids -> batched
+ * videos.list calls (50 ids max each) for authoritative metadata -> filter -> insert. Deduplicating before
  * videos.list matters because the same trailer is routinely returned by several
  * queries, and it keeps the batch small.
  *
@@ -972,6 +975,7 @@ export async function ingestYouTubeForAnime({
     animeList,
     perAnime = 3,
     queriesPerAnime = 2,
+    queryOffset = 0,
     dryRun = false,
     ownerId = null,
     totalCap = false,
@@ -1033,7 +1037,10 @@ export async function ingestYouTubeForAnime({
         report.animeProcessed += 1;
         onEvent({ type: "anime", title, animeId: anime._id, existingCount, slots });
 
-        const queries = QUERY_TEMPLATES.slice(0, queriesPerAnime).map((build) => build(title));
+        const startTemplate = Math.max(0, Number(queryOffset) || 0);
+        const queries = QUERY_TEMPLATES
+            .slice(startTemplate, startTemplate + queriesPerAnime)
+            .map((build) => build(title));
         const candidateIds = new Set();
 
         for (const query of queries) {
@@ -1041,7 +1048,13 @@ export async function ingestYouTubeForAnime({
             try {
                 // Slight over-fetch relative to perAnime, since filtering will
                 // discard some results; still bounded to keep quota predictable.
-                const results = await searchVideos(query, { maxResults: Math.min(slots * 2 + 2, 15) });
+                const results = await searchVideos(query, {
+                    // Growth runs may have as many as 15 open slots. Fetch enough
+                    // candidates for the quality filter to be selective without
+                    // spending another 100-unit search merely because the first
+                    // page was too small. YouTube search.list itself caps at 50.
+                    maxResults: Math.min(Math.max(slots * 3, 30), 50),
+                });
                 report.searches += 1;
                 report.discovered += results.length;
 
@@ -1067,7 +1080,8 @@ export async function ingestYouTubeForAnime({
         if (!candidateIds.size) continue;
         report.uniqueDiscovered += candidateIds.size;
 
-        // One batched call for authoritative metadata (1 quota unit for up to 50).
+        // Batched authoritative metadata calls. The service chunks at 50 ids per call,
+        // and videos.list is cheap compared with search.list.
         let details;
         try {
             const items = await getVideoDetails([...candidateIds]);

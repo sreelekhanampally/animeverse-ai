@@ -7,6 +7,8 @@
  *   npm run ingest:youtube -- --limit=10 --per-anime=3
  *   npm run ingest:youtube -- --limit=15 --per-anime=3 --queries=2
  *   npm run ingest:youtube -- --limit=20 --per-anime=3 --total-cap
+ *   npm run ingest:youtube -- --offset=45 --limit=45 --per-anime=15 --queries=2 --total-cap
+ *   npm run ingest:youtube -- --offset=0 --limit=45 --per-anime=15 --queries=2 --query-offset=2 --total-cap
  *
  * --per-anime is a PER-RUN allowance by default (existing behaviour), additionally
  * clamped so no anime can exceed MAX_VIDEOS_PER_ANIME in total. With --total-cap it
@@ -180,9 +182,14 @@ const run = async () => {
      *                    only the deficit and skips anime already at the target.
      */
     const totalCap = Boolean(args["total-cap"]);
-    const perAnime = Math.max(1, Math.min(Number(args["per-anime"]) || 3, 10));
-    const queriesPerAnime = Math.max(1, Math.min(Number(args.queries) || 2, QUERY_TEMPLATES.length));
-    const limit = Math.max(1, Math.min(Number(args.limit) || 10, 50));
+    const perAnime = Math.max(1, Math.min(Number(args["per-anime"]) || 3, MAX_VIDEOS_PER_ANIME));
+    const queryOffset = Math.max(0, Math.min(Number(args["query-offset"]) || 0, QUERY_TEMPLATES.length - 1));
+    const queriesPerAnime = Math.max(
+        1,
+        Math.min(Number(args.queries) || 2, QUERY_TEMPLATES.length - queryOffset)
+    );
+    const limit = Math.max(1, Math.min(Number(args.limit) || 10, 200));
+    const offset = Math.max(0, Math.min(Number(args.offset) || 0, 5000));
 
     // Fail before connecting to anything if the key is absent — the exact message
     // the brief requires.
@@ -205,6 +212,7 @@ const run = async () => {
         animeName: args.anime && args.anime !== true ? String(args.anime) : undefined,
         animeId: args["anime-id"] && args["anime-id"] !== true ? String(args["anime-id"]) : undefined,
         limit,
+        offset,
     });
 
     if (!animeList.length) {
@@ -218,11 +226,11 @@ const run = async () => {
     resetQuotaUsage();
 
     console.log(
-        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime x ` +
+        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime${offset ? ` (popularity offset ${offset})` : ""} x ` +
             (totalCap
                 ? `up to ${perAnime} TOTAL video(s) each (top-up mode)`
                 : `up to ${perAnime} new video(s) each (ceiling ${MAX_VIDEOS_PER_ANIME} total)`) +
-            `, ${queriesPerAnime} query template(s) each.`
+            `, ${queriesPerAnime} query template(s) each (starting at template ${queryOffset + 1}).`
     );
     console.log(`Estimated worst-case quota: ~${animeList.length * (queriesPerAnime * QUOTA_COST.search + QUOTA_COST.videos)} units.`);
     console.log(`Blocked terms: ${BLOCKED_TERMS.length} (${BLOCKED_TERMS.slice(0, 4).join(", ")}, ...)`);
@@ -242,6 +250,7 @@ const run = async () => {
         animeList,
         perAnime,
         queriesPerAnime,
+        queryOffset,
         dryRun,
         ownerId,
         totalCap,

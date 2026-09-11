@@ -687,43 +687,157 @@ test("denylist: every entry carries a human-readable reason", () => {
 /* ========================================================================== *
  * Per-anime slot arithmetic.
  *
- * The bug being fixed: --per-anime capped one RUN, nothing consulted the
- * database, so `--limit=5 --per-anime=3` followed by `--limit=10 --per-anime=3`
- * left the first five anime with six videos each and every re-run added more.
+ * --per-anime controls how many videos may be added in a single run.
+ * MAX_VIDEOS_PER_ANIME is the hard lifetime ceiling for one anime.
+ *
+ * Tests intentionally derive their boundary cases from
+ * MAX_VIDEOS_PER_ANIME so changing the ceiling in the future does not leave
+ * stale hard-coded expectations behind.
  * ========================================================================== */
 
 test("slots: default mode keeps the per-run meaning of --per-anime", () => {
-    // Backward compatibility: an empty anime asking for 3 still gets 3.
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 0 }), 3);
-    assert.equal(computeSlots({ perAnime: 2, existingCount: 1 }), 2);
-});
-
-test("slots: default mode is still bounded by the ceiling, so re-runs cannot grow for ever", () => {
-    // The exact historical sequence: second run must not add a full 3 again.
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 3 }), 3, "3 + 3 = 6, at the ceiling");
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 4 }), 2, "clamped to remaining headroom");
-    assert.equal(computeSlots({ perAnime: 3, existingCount: MAX_VIDEOS_PER_ANIME }), 0, "full");
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 99 }), 0, "never negative");
-});
-
-test("slots: --total-cap treats --per-anime as a total and imports only the deficit", () => {
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 0, totalCap: true }), 3);
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 2, totalCap: true }), 1, "tops up by 1");
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 3, totalCap: true }), 0, "already satisfied");
-    assert.equal(computeSlots({ perAnime: 3, existingCount: 6, totalCap: true }), 0, "over target, never negative");
-});
-
-test("slots: --total-cap is idempotent — a second identical run asks for nothing", () => {
-    const first = computeSlots({ perAnime: 3, existingCount: 0, totalCap: true });
-    assert.equal(first, 3);
-    // After importing those 3, the same command must be a no-op (and cost no quota).
-    assert.equal(computeSlots({ perAnime: 3, existingCount: first, totalCap: true }), 0);
-});
-
-test("slots: --total-cap cannot be used to exceed the hard ceiling", () => {
+    // An anime below the hard ceiling may still receive the requested
+    // number of videos for this run.
     assert.equal(
-        computeSlots({ perAnime: 10, existingCount: 0, totalCap: true }),
+        computeSlots({
+            perAnime: 3,
+            existingCount: 0,
+        }),
+        3
+    );
+
+    assert.equal(
+        computeSlots({
+            perAnime: 2,
+            existingCount: 1,
+        }),
+        2
+    );
+});
+
+test("slots: default mode is bounded by the hard ceiling", () => {
+    // Plenty of room remains, so the complete per-run request is allowed.
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: 3,
+        }),
+        3,
+        "full per-run request is allowed when enough headroom remains"
+    );
+
+    // Only two positions remain before the hard ceiling.
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: MAX_VIDEOS_PER_ANIME - 2,
+        }),
+        2,
+        "request is clamped to remaining headroom"
+    );
+
+    // Already full.
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: MAX_VIDEOS_PER_ANIME,
+        }),
+        0,
+        "full anime must request no additional videos"
+    );
+
+    // Defensive case: database state is somehow already beyond the ceiling.
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: MAX_VIDEOS_PER_ANIME + 50,
+        }),
+        0,
+        "slot count must never become negative"
+    );
+});
+
+test("slots: --total-cap treats --per-anime as the desired total", () => {
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: 0,
+            totalCap: true,
+        }),
+        3
+    );
+
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: 2,
+            totalCap: true,
+        }),
+        1,
+        "tops up only the missing amount"
+    );
+
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: 3,
+            totalCap: true,
+        }),
+        0,
+        "already at requested total"
+    );
+
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: 6,
+            totalCap: true,
+        }),
+        0,
+        "being above the requested total must never create negative slots"
+    );
+});
+
+test("slots: --total-cap is idempotent", () => {
+    const first = computeSlots({
+        perAnime: 3,
+        existingCount: 0,
+        totalCap: true,
+    });
+
+    assert.equal(first, 3);
+
+    // After importing those three, running the same command again should
+    // request nothing and therefore avoid unnecessary YouTube quota usage.
+    assert.equal(
+        computeSlots({
+            perAnime: 3,
+            existingCount: first,
+            totalCap: true,
+        }),
+        0
+    );
+});
+
+test("slots: --total-cap cannot exceed the hard ceiling", () => {
+    assert.equal(
+        computeSlots({
+            perAnime: MAX_VIDEOS_PER_ANIME + 10,
+            existingCount: 0,
+            totalCap: true,
+        }),
         MAX_VIDEOS_PER_ANIME,
-        "an operator asking for 10 total is still capped"
+        "a requested total above the hard ceiling must be capped"
+    );
+
+    // Also verify the ceiling while some videos already exist.
+    assert.equal(
+        computeSlots({
+            perAnime: MAX_VIDEOS_PER_ANIME + 10,
+            existingCount: 5,
+            totalCap: true,
+        }),
+        MAX_VIDEOS_PER_ANIME - 5,
+        "only remaining headroom may be imported"
     );
 });

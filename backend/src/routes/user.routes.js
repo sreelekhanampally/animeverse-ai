@@ -11,6 +11,10 @@ import {
     updateUserCoverImage,
     getUserChannelProfile,
     getWatchHistory,
+    removeFromWatchHistory,
+    clearWatchHistory,
+    getWatchLater,
+    toggleWatchLater,
     getNotificationPreferences,
     updateNotificationPreferences,
     markNotificationsRead
@@ -58,6 +62,12 @@ router.route("/notifications/read").post(verifyJWT, markNotificationsRead)
 // req.user is set so isSubscribed is accurate; guests simply get false.
 router.route("/c/:username").get(optionalJWT, getUserChannelProfile)
 
-router.route("/history").get(verifyJWT, getWatchHistory)
+router.route("/history")
+    .get(verifyJWT, getWatchHistory)
+    .delete(verifyJWT, clearWatchHistory)
+router.route("/history/:videoId").delete(verifyJWT, removeFromWatchHistory)
+
+router.route("/watch-later").get(verifyJWT, getWatchLater)
+router.route("/watch-later/:videoId").post(verifyJWT, toggleWatchLater)
 
 export default router;

@@ -24,6 +24,7 @@ export const POPULAR_ANIME_SEED = [
     { anilistId: 269, label: "Bleach" },
     { anilistId: 223, label: "Dragon Ball" },
     { anilistId: 813, label: "Dragon Ball Z" },
+    { anilistId: 21175, label: "Dragon Ball Super" },
     { anilistId: 16498, label: "Attack on Titan" },
     { anilistId: 101922, label: "Demon Slayer: Kimetsu no Yaiba" },
     { anilistId: 113415, label: "Jujutsu Kaisen" },
@@ -32,6 +33,7 @@ export const POPULAR_ANIME_SEED = [
     { anilistId: 5114, label: "Fullmetal Alchemist: Brotherhood" },
     { anilistId: 1535, label: "Death Note" },
     { anilistId: 127230, label: "Chainsaw Man" },
+    { anilistId: 137822, label: "BLUE LOCK" },
 
     // --- Modern hits ---
     { anilistId: 21087, label: "One-Punch Man" },
