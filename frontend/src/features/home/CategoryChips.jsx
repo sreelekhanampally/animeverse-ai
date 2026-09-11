@@ -1,34 +1,36 @@
 import { useState } from "react";
 import { cn } from "@/utils/cn";
 
+// These values mirror AniList genre strings stamped into imported video tags.
+// Keeping this list data-backed makes every chip actually filter a feed.
 const CATEGORIES = [
     "All",
-    "Shonen",
-    "Seinen",
-    "Isekai",
-    "Slice of Life",
-    "Mecha",
+    "Action",
+    "Adventure",
+    "Comedy",
+    "Drama",
+    "Fantasy",
     "Romance",
+    "Sci-Fi",
     "Sports",
-    "Music",
-    "AMV",
-    "Reactions",
-    "Reviews",
-    "Community",
+    "Supernatural",
 ];
 
-export function CategoryChips({ onChange }) {
-    const [active, setActive] = useState("All");
+export function CategoryChips({ onChange, value }) {
+    const [internal, setInternal] = useState("All");
+    const active = value ?? internal;
+
     return (
         <div className="scrollbar-thin flex snap-x items-center gap-2 overflow-x-auto pb-2">
-            {CATEGORIES.map((c) => {
-                const isActive = c === active;
+            {CATEGORIES.map((category) => {
+                const isActive = category === active;
                 return (
                     <button
-                        key={c}
+                        key={category}
+                        type="button"
                         onClick={() => {
-                            setActive(c);
-                            onChange?.(c);
+                            setInternal(category);
+                            onChange?.(category);
                         }}
                         className={cn(
                             "shrink-0 snap-start rounded-full border px-4 py-1.5 text-xs font-medium transition-colors",
@@ -37,7 +39,7 @@ export function CategoryChips({ onChange }) {
                                 : "border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/[0.07] hover:text-white"
                         )}
                     >
-                        {c}
+                        {category}
                     </button>
                 );
             })}

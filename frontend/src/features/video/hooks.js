@@ -10,6 +10,8 @@ import {
     historyService,
     commentService,
     subscriptionService,
+    watchLaterService,
+    aiService,
 } from "@/services";
 import { unwrapList, unwrapPagination, unwrapData } from "@/utils/unwrap";
 import { useAuthStore } from "@/store/authStore";
@@ -53,7 +55,39 @@ export function useTrendingVideos({ limit = PAGE_SIZE } = {}) {
 export function useRecommendedVideos({ limit = PAGE_SIZE } = {}) {
     return useQuery({
         queryKey: ["videos", "recommended", limit],
-        queryFn: async () => unwrapList(await videoService.recommended({ limit, page: 1 })),
+        queryFn: async () => unwrapList(await aiService.recommendations(limit)),
+    });
+}
+
+export function useGenreVideos(genre, { limit = PAGE_SIZE } = {}) {
+    return useQuery({
+        queryKey: ["videos", "genre", genre || "All", limit],
+        queryFn: async () =>
+            unwrapList(
+                await videoService.list({
+                    ...(genre && genre !== "All" ? { genre } : {}),
+                    sortBy: "views",
+                    sortType: "desc",
+                    limit,
+                    page: 1,
+                })
+            ),
+    });
+}
+
+export function useCreatorOriginals({ limit = PAGE_SIZE } = {}) {
+    return useQuery({
+        queryKey: ["videos", "creator-originals", limit],
+        queryFn: async () =>
+            unwrapList(
+                await videoService.list({
+                    sourceType: "cloudinary",
+                    sortBy: "createdAt",
+                    sortType: "desc",
+                    limit,
+                    page: 1,
+                })
+            ),
     });
 }
 
@@ -203,6 +237,39 @@ export function useBasedOnLikes({ limit = PAGE_SIZE } = {}) {
             }
             const r = await videoService.list({ userId: ownerId, limit, page: 1 });
             return unwrapList(r);
+        },
+    });
+}
+
+/* ---------------- Watch Later ---------------- */
+
+export const WATCH_LATER_KEY = ["videos", "watch-later"];
+
+export function useWatchLater() {
+    const authed = useIsAuthed();
+    return useQuery({
+        queryKey: WATCH_LATER_KEY,
+        queryFn: async () => unwrapList(await watchLaterService.list()),
+        enabled: authed,
+    });
+}
+
+export function useToggleWatchLater(video) {
+    const qc = useQueryClient();
+    const videoId = video?._id;
+
+    return useMutation({
+        mutationFn: async () => unwrapData(await watchLaterService.toggle(videoId)),
+        onSuccess: (result) => {
+            qc.setQueryData(WATCH_LATER_KEY, (current = []) => {
+                if (!Array.isArray(current)) return current;
+                if (result?.isSaved) {
+                    if (current.some((item) => item?._id === videoId)) return current;
+                    return [video, ...current];
+                }
+                return current.filter((item) => item?._id !== videoId);
+            });
+            qc.invalidateQueries({ queryKey: WATCH_LATER_KEY });
         },
     });
 }

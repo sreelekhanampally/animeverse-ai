@@ -116,16 +116,18 @@ export function VideoCard({ video, className, compact = false, onMenuClick }) {
                             )}
                         </div>
                     </div>
-                    <button
-                        onClick={(e) => {
-                            e.preventDefault();
-                            onMenuClick?.(video, e);
-                        }}
-                        className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
-                        aria-label="More options"
-                    >
-                        <MoreVertical className="h-4 w-4" />
-                    </button>
+                    {onMenuClick && (
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                onMenuClick(video, e);
+                            }}
+                            className="rounded-lg p-1.5 text-muted opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                            aria-label="More options"
+                        >
+                            <MoreVertical className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
             )}
         </motion.article>

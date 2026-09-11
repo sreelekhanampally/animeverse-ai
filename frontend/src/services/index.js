@@ -51,14 +51,24 @@ export const playlistService = {
 
 export const historyService = {
     list: () => apiClient.get("/users/history"),
-    /**
-     * The backend records watch history when a video is fetched by id.
-     * These aliases exist so the frontend can call them intentionally
-     * without adding new endpoints.
-     */
+    /** The backend records history when a signed-in user opens a video. */
     track: (videoId) => apiClient.get(`/videos/${videoId}`),
-    remove: (videoId) => apiClient.delete(`/users/history/${videoId}`).catch(() => null),
-    clear: () => apiClient.delete(`/users/history`).catch(() => null),
+    remove: (videoId) => apiClient.delete(`/users/history/${videoId}`),
+    clear: () => apiClient.delete(`/users/history`),
+};
+
+export const watchLaterService = {
+    list: () => apiClient.get("/users/watch-later"),
+    toggle: (videoId) => apiClient.post(`/users/watch-later/${videoId}`),
+};
+
+export const communityService = {
+    posts: (params) => apiClient.get("/community/posts", { params }),
+    createPost: (payload) => apiClient.post("/community/posts", payload),
+    upvote: (postId) => apiClient.post(`/community/posts/${postId}/upvote`),
+    vote: (postId, optionIndex) => apiClient.post(`/community/posts/${postId}/vote`, { optionIndex }),
+    removePost: (postId) => apiClient.delete(`/community/posts/${postId}`),
+    clubs: () => apiClient.get("/community/clubs"),
 };
 
 export const tweetService = {

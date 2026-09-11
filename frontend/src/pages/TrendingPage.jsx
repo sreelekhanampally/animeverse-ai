@@ -10,7 +10,7 @@ export default function TrendingPage() {
             <SectionHeader
                 icon={Flame}
                 title="Trending"
-                subtitle="What the AnimeVerse is watching right now."
+                subtitle="Published videos ranked by AnimeVerse view count."
             />
             <InfiniteVideoGrid
                 query={query}

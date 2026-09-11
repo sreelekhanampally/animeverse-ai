@@ -1,23 +1,36 @@
-import { useQuery } from "@tanstack/react-query";
-import { tweetService } from "@/services";
-import { useAuthStore } from "@/store/authStore";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { communityService } from "@/services";
+import { unwrapData, unwrapList } from "@/utils/unwrap";
 
-const unwrap = (r) => {
-    const d = r?.data?.data;
-    if (Array.isArray(d)) return d;
-    if (Array.isArray(d?.docs)) return d.docs;
-    if (Array.isArray(d?.tweets)) return d.tweets;
-    return [];
-};
 
-export function useCommunityFeed({ limit = 6 } = {}) {
-    // GET /tweets is behind verifyJWT, so as a guest this only produced a 401
-    // (and a wasted refresh-token retry). Gate it instead of widening that
-    // route's auth, which is outside the scope of this fix.
-    const authed = !!useAuthStore((s) => s.user);
+export function useCommunityFeed({ limit = 6, type } = {}) {
     return useQuery({
-        queryKey: ["tweets", "feed", limit],
-        queryFn: async () => unwrap(await tweetService.list({ limit, page: 1 })),
-        enabled: authed,
+        queryKey: ["community", "posts", limit, type || "all"],
+        queryFn: async () => unwrapList(await communityService.posts({ limit, page: 1, ...(type ? { type } : {}) })),
+    });
+}
+
+export function useCreateCommunityPost() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (payload) => unwrapData(await communityService.createPost(payload)),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
+    });
+}
+
+export function useUpvoteCommunityPost() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async (postId) => unwrapData(await communityService.upvote(postId)),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
+    });
+}
+
+export function useVoteCommunityPost() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ postId, optionIndex }) =>
+            unwrapData(await communityService.vote(postId, optionIndex)),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["community", "posts"] }),
     });
 }

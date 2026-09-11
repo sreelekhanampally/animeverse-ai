@@ -1,4 +1,6 @@
-import { Flame, Sparkles, Clock, Heart, PlayCircle, Rocket } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Flame, Sparkles, Heart, PlayCircle, Rocket, Palette, UploadCloud } from "lucide-react";
 import { HeroBanner } from "@/features/home/HeroBanner";
 import { CategoryChips } from "@/features/home/CategoryChips";
 import { SectionHeader } from "@/features/home/SectionHeader";
@@ -10,7 +12,8 @@ import {
     useTrendingVideos,
     useContinueWatching,
     useBasedOnLikes,
-    useRecentUploads,
+    useGenreVideos,
+    useCreatorOriginals,
 } from "@/features/video/hooks";
 import { CommunityPreview } from "@/features/community/CommunityPreview";
 import { useCommunityFeed } from "@/features/community/hooks";
@@ -19,13 +22,14 @@ import { PATHS } from "@/routes/paths";
 
 export default function HomePage() {
     const { user } = useAuth();
+    const [genre, setGenre] = useState("All");
 
     const trending = useTrendingVideos({ limit: 12 });
     const recommended = useRecommendedVideos({ limit: 12 });
     const latest = useLatestVideos({ limit: 12 });
-    const recent = useRecentUploads({ limit: 12 });
+    const genreVideos = useGenreVideos(genre, { limit: 12 });
+    const creatorOriginals = useCreatorOriginals({ limit: 12 });
     const community = useCommunityFeed({ limit: 6 });
-
     const continueWatching = useContinueWatching();
     const basedOnLikes = useBasedOnLikes({ limit: 12 });
 
@@ -33,14 +37,35 @@ export default function HomePage() {
         <div className="space-y-10">
             <HeroBanner />
 
-            <CategoryChips />
+            <section>
+                <SectionHeader
+                    icon={Palette}
+                    title={genre === "All" ? "Browse the catalogue" : `${genre} picks`}
+                    subtitle={
+                        genre === "All"
+                            ? "Choose a genre to reshape this row using the genres stored with each anime."
+                            : `Videos linked to anime tagged ${genre} in the catalogue.`
+                    }
+                />
+                <CategoryChips value={genre} onChange={setGenre} />
+                <div className="mt-4">
+                    <VideoRow
+                        videos={genreVideos.data}
+                        isLoading={genreVideos.isLoading}
+                        error={genreVideos.error}
+                        onRetry={() => genreVideos.refetch()}
+                        emptyIcon={Palette}
+                        emptyTitle={`No ${genre === "All" ? "catalogue" : genre} videos yet`}
+                        emptyMessage="As the catalogue grows, matching videos will appear here."
+                    />
+                </div>
+            </section>
 
-            {/* Trending */}
             <section>
                 <SectionHeader
                     icon={Flame}
-                    title="🔥Most-watched this week"
-                    subtitle="See what the AnimeVerse community is watching right now."
+                    title="Most watched on AnimeVerse"
+                    subtitle="Ranked by the platform's real view counts, highest first."
                     to={PATHS.trending}
                 />
                 <VideoRow
@@ -54,12 +79,23 @@ export default function HomePage() {
                 />
             </section>
 
-            {/* Recommended */}
             <section>
                 <SectionHeader
                     icon={Sparkles}
-                    title="⭐ Recommended For You"
-                    subtitle="Handpicked based on what's popular."
+                    title={user ? "Recommended for you" : "Recommended starting points"}
+                    subtitle={
+                        user
+                            ? "Uses your recent watch history when compatible embeddings are available, then ranks nearby videos."
+                            : "A view-and-recency mix for visitors who do not have watch history yet."
+                    }
+                    action={
+                        <Link
+                            to={PATHS.aiSearch}
+                            className="text-xs font-medium text-accent hover:text-white"
+                        >
+                            Try AI Search
+                        </Link>
+                    }
                 />
                 <VideoRow
                     videos={recommended.data}
@@ -70,28 +106,12 @@ export default function HomePage() {
                 />
             </section>
 
-            {/* Latest Uploads */}
-            <section>
-                <SectionHeader
-                    icon={Rocket}
-                    title="🆕 Latest Uploads"
-                    subtitle="Fresh episodes, edits, and creator drops."
-                />
-                <VideoRow
-                    videos={latest.data}
-                    isLoading={latest.isLoading}
-                    error={latest.error}
-                    onRetry={() => latest.refetch()}
-                />
-            </section>
-
-            {/* Continue Watching (only if authed and has history) */}
             {user && (
                 <section>
                     <SectionHeader
                         icon={PlayCircle}
-                        title="📺 Continue Watching"
-                        subtitle="Pick up right where you left off."
+                        title="Recently watched"
+                        subtitle="Your history is kept newest-first so you can jump back into something you opened recently."
                         to={PATHS.history}
                     />
                     <VideoRow
@@ -100,20 +120,19 @@ export default function HomePage() {
                         error={continueWatching.error}
                         onRetry={() => continueWatching.refetch()}
                         emptyIcon={PlayCircle}
-                        emptyTitle="Nothing to resume"
-                        emptyMessage="Once you start watching, we'll save your spot here."
-                        renderCard={(v) => <ContinueWatchingCard video={v} />}
+                        emptyTitle="Nothing watched yet"
+                        emptyMessage="Open a video and it will appear here."
+                        renderCard={(video) => <ContinueWatchingCard video={video} />}
                     />
                 </section>
             )}
 
-            {/* Based on Likes (auth only) */}
             {user && (
                 <section>
                     <SectionHeader
                         icon={Heart}
-                        title="❤️ Based on Your Likes"
-                        subtitle="More from creators you've enjoyed."
+                        title="Because you liked these creators"
+                        subtitle="More videos from a creator behind something you liked."
                         to={PATHS.liked}
                     />
                     <VideoRow
@@ -123,27 +142,52 @@ export default function HomePage() {
                         onRetry={() => basedOnLikes.refetch()}
                         emptyIcon={Heart}
                         emptyTitle="Like some videos"
-                        emptyMessage="Like content and this row will fill up with related picks."
+                        emptyMessage="Like content and this row will learn which creators to revisit."
                     />
                 </section>
             )}
 
-            {/* Recently uploaded */}
             <section>
                 <SectionHeader
-                    icon={Clock}
-                    title="🎬 Recently Uploaded"
-                    subtitle="The most recent additions to the platform."
+                    icon={UploadCloud}
+                    title="Creator originals"
+                    subtitle="Videos uploaded directly by AnimeVerse creators and played from Cloudinary."
+                    action={
+                        user ? (
+                            <Link
+                                to={PATHS.upload}
+                                className="text-xs font-medium text-accent hover:text-white"
+                            >
+                                Upload yours
+                            </Link>
+                        ) : undefined
+                    }
                 />
                 <VideoRow
-                    videos={recent.data}
-                    isLoading={recent.isLoading}
-                    error={recent.error}
-                    onRetry={() => recent.refetch()}
+                    videos={creatorOriginals.data}
+                    isLoading={creatorOriginals.isLoading}
+                    error={creatorOriginals.error}
+                    onRetry={() => creatorOriginals.refetch()}
+                    emptyIcon={UploadCloud}
+                    emptyTitle="No creator uploads yet"
+                    emptyMessage="Creator uploads will appear here separately from YouTube embeds."
                 />
             </section>
 
-            {/* Community */}
+            <section>
+                <SectionHeader
+                    icon={Rocket}
+                    title="New on AnimeVerse"
+                    subtitle="The newest published additions across creator uploads and imported anime videos."
+                />
+                <VideoRow
+                    videos={latest.data}
+                    isLoading={latest.isLoading}
+                    error={latest.error}
+                    onRetry={() => latest.refetch()}
+                />
+            </section>
+
             <section>
                 <CommunityPreview
                     posts={community.data}

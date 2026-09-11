@@ -124,4 +124,8 @@ dist
 backend/.model-cache/
 .model-cache/
 
+# Local seed output can contain demo-account credentials. Never commit it.
+backend/.seed-output/
+.seed-output/
+
 # End of https://mrkandreev.name/snippets/gitignore-generator/#Node

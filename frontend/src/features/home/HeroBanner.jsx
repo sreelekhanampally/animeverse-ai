@@ -54,14 +54,10 @@ export function HeroBanner() {
                         <Sparkles className="h-3 w-3" /> OPEN BETA · v0.4
                     </div>
                     <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
-                        <span>You know the scene. </span>
+                        Find the anime you remember, even when the title escapes you.
                     </h1>
-                    <h1 className="max-w-2xl font-display text-3xl font-bold leading-tight text-white sm:text-4xl md:text-5xl">
-                        <span>You just can't name it. </span>
-                    </h1>
-                    {/* <span className="gradient-text">Every Anime Universe</span> */}
                     <p className="mt-3 max-w-xl text-sm text-white/75 sm:text-base">
-                        Describe it badly. “Rain fight, red umbrella, maybe episode 12.” AnimeVerse finds the scene, episode, and timestamp.
+                        Describe a character, theme, story beat, or title fragment. AnimeVerse uses local semantic search to rank relevant anime videos, then lets you ask the AI companion about the catalogue.
                     </p>
                     <div className="mt-6 flex flex-wrap items-center gap-3">
                         <Link
@@ -71,7 +67,7 @@ export function HeroBanner() {
                             <Play className="h-4 w-4" fill="currentColor" /> Start Watching
                         </Link>
                         <Link to={PATHS.aiSearch} className="btn-ghost">
-                            <Sparkles className="h-4 w-4 text-accent" /> Find a Scene
+                            <Sparkles className="h-4 w-4 text-accent" /> Search with AI
                             <ChevronRight className="h-4 w-4" />
                         </Link>
                     </div>
