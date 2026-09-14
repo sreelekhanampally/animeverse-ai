@@ -231,8 +231,8 @@ export const semanticSearchPost = asyncHandler(async (req, res) => {
 });
 
 // POST /api/v1/ai/chat  { messages: [{ role, content }] }
-// Grounded against AnimeVerse metadata. It uses local Ollama when available and
-// falls back to a deterministic retrieval answer, so no paid API is required.
+// Dedicated anime assistant. Gemini free-tier is preferred when configured and can
+// call AnimeVerse catalogue tools on demand. Ollama/local retrieval remain free fallbacks.
 export const animeChat = asyncHandler(async (req, res) => {
     const messages = req.body?.messages;
     const result = await answerAnimeChat(messages);
@@ -276,7 +276,7 @@ export const recommendations = asyncHandler(async (req, res) => {
         .select(`${EMBEDDING_FIELDS} title description thumbnail views duration owner tags category createdAt sourceType externalVideoId`)
         .populate("owner", "username fullName avatar")
         .sort({ createdAt: -1 })
-        .limit(500)
+        .limit(1500)
         .lean();
 
     let scored;
@@ -453,7 +453,7 @@ export const aiHealth = asyncHandler(async (req, res) => {
             status.configured
                 ? openaiConfigured
                     ? "OK"
-                    : "OK — local embeddings and AnimeVerse chat are available without a paid API; legacy OpenAI-only summary, tagging and transcription features remain unavailable."
+                    : "OK — local embeddings and AnimeVerse chat are available without a paid API; Gemini free-tier can be enabled separately, while legacy OpenAI-only summary, tagging and transcription features remain unavailable."
                 : "AI is not configured"
         )
     );

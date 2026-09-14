@@ -22,6 +22,30 @@ import {
     fetchPopularAnimeFromJikan,
     mapJikanAnimeToAnime,
 } from "../services/jikan.service.js";
+import { normalizeCuratedTitle } from "../services/curatedAnime.service.js";
+
+
+async function findCuratedTitleMatch(title) {
+    const wanted = new Set(
+        [title?.display, title?.english, title?.romaji]
+            .map(normalizeCuratedTitle)
+            .filter(Boolean)
+    );
+    if (!wanted.size) return null;
+
+    const curated = await Anime.find({ metadataSource: "curated" })
+        .select("_id title anilistId metadataSource")
+        .lean();
+
+    return (
+        curated.find((anime) =>
+            [anime?.title?.display, anime?.title?.english, anime?.title?.romaji]
+                .map(normalizeCuratedTitle)
+                .filter(Boolean)
+                .some((key) => wanted.has(key))
+        ) || null
+    );
+}
 
 /**
  * Upserts one AniList payload.
@@ -47,8 +71,16 @@ export async function upsertAnimeFromMedia(media) {
         ? { $or: [{ anilistId: doc.anilistId }, { malId: doc.malId }] }
         : { anilistId: doc.anilistId };
 
+    const directExisting = await Anime.findOne(identity).select("_id").lean();
+    const curatedMatch = directExisting ? null : await findCuratedTitleMatch(doc.title);
+    const writeIdentity = directExisting?._id
+        ? { _id: directExisting._id }
+        : curatedMatch?._id
+          ? { _id: curatedMatch._id }
+          : identity;
+
     const result = await Anime.findOneAndUpdate(
-        identity,
+        writeIdentity,
         { $set: doc },
         {
             upsert: true,
@@ -211,9 +243,13 @@ export async function ingestTrendingFromAniList({ limit = 50, onProgress } = {})
 export async function upsertAnimeFromJikan(item) {
     const doc = mapJikanAnimeToAnime(item);
 
-    const existing = await Anime.findOne({
+    let existing = await Anime.findOne({
         $or: [{ malId: doc.malId }, { anilistId: doc.anilistId }],
     }).select("anilistId malId metadataSource title");
+
+    if (!existing) {
+        existing = await findCuratedTitleMatch(doc.title);
+    }
 
     if (existing?.metadataSource === "anilist" && Number(existing.anilistId) > 0) {
         return {

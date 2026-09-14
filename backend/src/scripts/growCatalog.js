@@ -2,7 +2,7 @@
  * Safe catalogue-growth orchestrator.
  *
  * Metadata strategy by default:
- *   AniList -> Jikan/MyAnimeList -> existing MongoDB metadata
+ *   AniList -> Jikan/MyAnimeList -> offline curated seed -> existing MongoDB metadata
  *
  * This keeps catalogue growth moving during AniList outages without weakening
  * YouTube quality filters or inventing metadata. Jikan is only a fallback source;
@@ -14,6 +14,7 @@
  *   npm run grow:catalog -- --offset=40
  *   npm run grow:catalog -- --offset=0 --query-offset=2
  *   npm run grow:catalog -- --metadata-provider=jikan --offset=0
+ *   npm run grow:catalog -- --metadata-provider=curated --offset=0
  *   npm run grow:catalog -- --metadata-provider=stored --offset=0
  *   npm run grow:catalog -- --dry-run --offset=0
  *
@@ -32,7 +33,7 @@ import { Video } from "../models/video.model.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BACKEND_ROOT = path.resolve(HERE, "../..");
-const METADATA_PROVIDERS = new Set(["auto", "anilist", "jikan", "stored"]);
+const METADATA_PROVIDERS = new Set(["auto", "anilist", "jikan", "curated", "stored"]);
 
 const parseArgs = (argv) => {
     const args = {};
@@ -74,12 +75,13 @@ function runNodeScript(scriptName, args = []) {
 async function getAnimeInventory() {
     await connectDB();
     try {
-        const [total, anilist, jikan] = await Promise.all([
+        const [total, anilist, jikan, curated] = await Promise.all([
             Anime.countDocuments(),
             Anime.countDocuments({ metadataSource: "anilist" }),
             Anime.countDocuments({ metadataSource: "jikan" }),
+            Anime.countDocuments({ metadataSource: "curated" }),
         ]);
-        return { total, anilist, jikan };
+        return { total, anilist, jikan, curated };
     } finally {
         await mongoose.disconnect();
     }
@@ -92,6 +94,7 @@ async function printStats(targetVideos) {
             anime,
             anilistAnime,
             jikanAnime,
+            curatedAnime,
             published,
             youtube,
             cloudinary,
@@ -101,6 +104,7 @@ async function printStats(targetVideos) {
             Anime.countDocuments(),
             Anime.countDocuments({ metadataSource: "anilist" }),
             Anime.countDocuments({ metadataSource: "jikan" }),
+            Anime.countDocuments({ metadataSource: "curated" }),
             Video.countDocuments({ isPublished: true }),
             Video.countDocuments({ isPublished: true, sourceType: "youtube" }),
             Video.countDocuments({ isPublished: true, sourceType: { $ne: "youtube" } }),
@@ -121,6 +125,7 @@ async function printStats(targetVideos) {
         console.log(`Anime documents       : ${anime}`);
         console.log(`  AniList-backed      : ${anilistAnime}`);
         console.log(`  Jikan fallback      : ${jikanAnime}`);
+        console.log(`  Curated offline     : ${curatedAnime}`);
         console.log(`Published videos      : ${published}`);
         console.log(`  YouTube             : ${youtube}`);
         console.log(`  Cloudinary/legacy   : ${cloudinary}`);
@@ -137,6 +142,7 @@ async function printStats(targetVideos) {
             anime,
             anilistAnime,
             jikanAnime,
+            curatedAnime,
             published,
             youtube,
             cloudinary,
@@ -154,7 +160,7 @@ function normaliseMetadataProvider(args) {
         : String(args["metadata-provider"] || "auto").trim().toLowerCase();
     if (!METADATA_PROVIDERS.has(requested)) {
         throw new Error(
-            `Unknown metadata provider "${requested}". Use auto, anilist, jikan, or stored.`
+            `Unknown metadata provider "${requested}". Use auto, anilist, jikan, curated, or stored.`
         );
     }
     return requested;
@@ -213,6 +219,26 @@ async function refreshMetadata({ provider, animeTarget, dryRun }) {
             throw new Error("Jikan was explicitly requested and its metadata refresh failed.");
         }
 
+        console.warn("  External metadata unavailable; trying the reviewed offline Anime seed...");
+    }
+
+    if (provider === "curated" || provider === "auto") {
+        const curatedResult = runNodeScript("ingestCuratedAnime.js", [
+            `--target-total=${animeTarget}`,
+        ]);
+
+        if (curatedResult.ok) {
+            console.log("\n✓ Offline curated metadata fallback completed.");
+            return { providerUsed: "curated", youtubeMetadataSource: "curated" };
+        }
+
+        console.warn("\n⚠ Offline curated metadata fallback failed.");
+        console.warn(`  ingestCuratedAnime.js exited with ${curatedResult.status ?? "no status"}.`);
+
+        if (provider === "curated") {
+            throw new Error("The offline curated metadata provider was explicitly requested and failed.");
+        }
+
         console.warn("  Falling back to Anime documents already stored in MongoDB.");
     }
 
@@ -233,7 +259,7 @@ async function main() {
 
     console.log("AnimeVerse safe catalogue growth");
     console.log(`Anime metadata target : top ${animeTarget} by popularity`);
-    console.log(`Metadata strategy     : ${metadataProvider === "auto" ? "AniList → Jikan → stored" : metadataProvider}`);
+    console.log(`Metadata strategy     : ${metadataProvider === "auto" ? "AniList → Jikan → curated offline → stored" : metadataProvider}`);
     console.log(`YouTube batch         : offset ${offset}, ${batch} anime`);
     console.log(`Target per anime      : ${perAnime}`);
     console.log(`Search templates      : ${queries}, starting at ${queryOffset + 1}`);
@@ -250,6 +276,7 @@ async function main() {
     console.log(`\nStored Anime available: ${inventory.total}`);
     console.log(`  AniList-backed       : ${inventory.anilist}`);
     console.log(`  Jikan fallback       : ${inventory.jikan}`);
+    console.log(`  Curated offline      : ${inventory.curated}`);
 
     if (inventory.total === 0) {
         throw new Error(

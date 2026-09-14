@@ -132,11 +132,13 @@ test("AniList recovery promotes a matching Jikan fallback document by malId inst
     assert.match(ingest, /existing AniList metadata preserved/);
 });
 
-test("catalogue growth falls back AniList -> Jikan -> stored and targets Jikan rows directly", async () => {
+test("catalogue growth falls back AniList -> Jikan -> curated -> stored and targets fallback rows directly", async () => {
     const grow = await read("src/scripts/growCatalog.js");
-    assert.match(grow, /AniList → Jikan → stored/);
+    assert.match(grow, /AniList → Jikan → curated offline → stored/);
     assert.match(grow, /ingestJikan\.js/);
     assert.match(grow, /youtubeMetadataSource: "jikan"/);
+    assert.match(grow, /ingestCuratedAnime\.js/);
+    assert.match(grow, /youtubeMetadataSource: "curated"/);
     assert.match(grow, /--metadata-source=/);
 });
 

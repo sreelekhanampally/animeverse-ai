@@ -9,6 +9,7 @@
     "start": "node src/index.js",
     "ingest:anime": "node src/scripts/ingestAnime.js",
     "ingest:jikan": "node src/scripts/ingestJikan.js",
+    "ingest:curated": "node src/scripts/ingestCuratedAnime.js",
     "ingest:youtube": "node src/scripts/ingestYouTube.js",
     "backfill:embeddings": "node src/scripts/backfillEmbeddings.js",
     "test": "node --test",

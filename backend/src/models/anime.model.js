@@ -3,7 +3,8 @@ import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
 
 /**
  * Canonical anime metadata. AniList is the preferred source; Jikan/MyAnimeList is
- * an outage fallback for catalogue expansion.
+ * an outage fallback, and a reviewed local title catalogue is the final offline
+ * fallback when both external providers are unavailable.
  *
  * This collection is *reference data*, not user-generated content: a document
  * describes a series (Attack on Titan), while a Video describes a piece of
@@ -133,9 +134,9 @@ const animeSchema = new Schema(
         },
         startYear: { type: Number, default: null },
 
-        // Provenance. `anilist` is preferred; `jikan` marks outage-fallback rows.
-        // This lets growth target new fallback rows and prevents Jikan refreshes
-        // from overwriting richer AniList metadata.
+        // Provenance. `anilist` is preferred; `jikan` marks API fallback rows and
+        // `curated` marks the offline title-only fallback. This lets growth target
+        // newly added fallback rows without pretending local seeds are full metadata.
         metadataSource: { type: String, default: "anilist" },
         lastSyncedAt: { type: Date, default: Date.now },
 
