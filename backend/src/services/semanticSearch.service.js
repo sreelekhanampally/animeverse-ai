@@ -58,7 +58,7 @@ const publicAnime = (anime) => {
     };
 };
 
-export async function semanticVideoSearch(query, { limit = 20, maxCandidates = 500 } = {}) {
+export async function semanticVideoSearch(query, { limit = 20, maxCandidates = 1500 } = {}) {
     const { embedding: queryEmbedding } = await generateEmbedding(query);
 
     const [videos, animeDocs] = await Promise.all([
