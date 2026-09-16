@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     Bot,
     Send,
@@ -8,19 +8,28 @@ import {
     PlayCircle,
     Search,
     ShieldCheck,
+    MessageSquarePlus,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { SectionHeader } from "@/features/home/SectionHeader";
 import { Button } from "@/components/ui/Button";
 import { aiService } from "@/services";
 import { extractErrorMessage } from "@/services/apiClient";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+    animeChatSessionKey,
+    clearAnimeChatSession,
+    loadAnimeChatSession,
+    saveAnimeChatSession,
+} from "@/utils/chatSession";
 
-const STARTER = {
+const createStarter = () => ({
     role: "assistant",
     content:
         "Hey! I’m your AnimeVerse anime assistant. Ask me about characters, stories, power systems, watch order, recommendations, or tell me what you want to find in the AnimeVerse catalog.",
     provider: "AnimeVerse",
-};
+    systemStarter: true,
+});
 
 const QUICK_PROMPTS = [
     "Recommend a short anime for this weekend",
@@ -43,19 +52,95 @@ const providerLabel = (provider, usedCatalog) => {
 };
 
 export default function AiChatPage() {
-    const [messages, setMessages] = useState([STARTER]);
+    const { user, loading: authLoading } = useAuth();
+    const userId = user?._id || null;
+    const storageKey = useMemo(() => animeChatSessionKey(userId), [userId]);
+
+    const [messages, setMessages] = useState(() => [createStarter()]);
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [sources, setSources] = useState([]);
+    const [hydratedKey, setHydratedKey] = useState(null);
     const lastSubmitted = useRef(null);
+    const latestSessionRef = useRef({ messages, sources, input });
+    const scrollYRef = useRef(0);
+
+    useEffect(() => {
+        latestSessionRef.current = { messages, sources, input };
+    }, [messages, sources, input]);
+
+    useEffect(() => {
+        if (authLoading) return;
+
+        setHydratedKey(null);
+        const saved = loadAnimeChatSession(userId);
+        const restoredMessages = saved?.messages?.length ? saved.messages : [createStarter()];
+
+        setMessages(restoredMessages);
+        setSources(saved?.sources || []);
+        setInput(saved?.draft || "");
+        setError("");
+        setLoading(false);
+        lastSubmitted.current = null;
+
+        // Mark hydration after the state above is queued. This prevents the initial
+        // starter render from overwriting a saved conversation before restoration.
+        setHydratedKey(storageKey);
+
+        if (saved?.scrollY) {
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: saved.scrollY, behavior: "auto" });
+            });
+        }
+    }, [authLoading, storageKey, userId]);
+
+    const persistNow = useCallback(
+        (scrollY = typeof window !== "undefined" ? window.scrollY : 0) => {
+            if (authLoading || hydratedKey !== storageKey) return;
+            const current = latestSessionRef.current;
+            saveAnimeChatSession(userId, {
+                messages: current.messages,
+                sources: current.sources,
+                draft: current.input,
+                scrollY,
+            });
+        },
+        [authLoading, hydratedKey, storageKey, userId]
+    );
+
+    useEffect(() => {
+        if (authLoading || hydratedKey !== storageKey) return;
+        persistNow();
+    }, [messages, sources, input, authLoading, hydratedKey, storageKey, persistNow]);
+
+    useEffect(() => {
+        if (authLoading || hydratedKey !== storageKey) return undefined;
+
+        const handleScroll = () => {
+            scrollYRef.current = window.scrollY;
+        };
+        const handlePageHide = () => persistNow(scrollYRef.current || window.scrollY);
+
+        scrollYRef.current = window.scrollY;
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        window.addEventListener("pagehide", handlePageHide);
+
+        return () => {
+            persistNow(scrollYRef.current || window.scrollY);
+            window.removeEventListener("scroll", handleScroll);
+            window.removeEventListener("pagehide", handlePageHide);
+        };
+    }, [authLoading, hydratedKey, storageKey, persistNow]);
+
+    const sessionReady = !authLoading && hydratedKey === storageKey;
 
     const submitMessage = async (content) => {
         const text = content.trim();
-        if (!text || loading) return;
+        if (!text || loading || !sessionReady) return;
 
         const conversation = [...messages, { role: "user", content: text }]
-            .filter((message) => message !== STARTER)
+            .filter((message) => !message.systemStarter)
             .map(({ role, content: messageContent }) => ({ role, content: messageContent }))
             .slice(-11);
 
@@ -86,10 +171,23 @@ export default function AiChatPage() {
         }
     };
 
+    const startNewChat = () => {
+        clearAnimeChatSession(userId);
+        setMessages([createStarter()]);
+        setSources([]);
+        setInput("");
+        setError("");
+        setLoading(false);
+        lastSubmitted.current = null;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
     const onSubmit = (event) => {
         event.preventDefault();
         submitMessage(input);
     };
+
+    const hasConversation = messages.some((message) => !message.systemStarter) || Boolean(input.trim());
 
     return (
         <div className="mx-auto max-w-4xl space-y-6">
@@ -97,6 +195,17 @@ export default function AiChatPage() {
                 icon={Bot}
                 title="AnimeVerse Assistant"
                 subtitle="An anime expert that can also search your live AnimeVerse catalog when you need it."
+                action={
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={startNewChat}
+                        disabled={!sessionReady || !hasConversation || loading}
+                        title="Start a fresh conversation"
+                    >
+                        <MessageSquarePlus className="h-4 w-4" /> New chat
+                    </Button>
+                }
             />
 
             <div className="flex flex-wrap gap-2">
@@ -113,7 +222,14 @@ export default function AiChatPage() {
 
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-card/60">
                 <div className="min-h-[440px] space-y-4 p-4 sm:p-6">
-                    {messages.map((message, index) => {
+                    {!sessionReady && (
+                        <div className="flex min-h-[360px] items-center justify-center gap-3 text-sm text-muted">
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            Restoring your conversation...
+                        </div>
+                    )}
+
+                    {sessionReady && messages.map((message, index) => {
                         const assistant = message.role === "assistant";
                         const label = assistant
                             ? providerLabel(message.provider, message.usedCatalog)
@@ -154,7 +270,7 @@ export default function AiChatPage() {
                         );
                     })}
 
-                    {messages.length === 1 && !loading && (
+                    {sessionReady && messages.length === 1 && !loading && (
                         <div className="grid gap-2 pt-2 sm:grid-cols-2">
                             {QUICK_PROMPTS.map((prompt) => (
                                 <button
@@ -169,7 +285,7 @@ export default function AiChatPage() {
                         </div>
                     )}
 
-                    {loading && (
+                    {sessionReady && loading && (
                         <div className="flex items-center gap-3 text-sm text-muted">
                             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-accent">
                                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -192,6 +308,7 @@ export default function AiChatPage() {
                                 <Link
                                     key={source.videoId}
                                     to={`/watch/${source.videoId}`}
+                                    onClick={() => persistNow(scrollYRef.current || window.scrollY)}
                                     className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 transition hover:border-primary/40 hover:bg-white/[0.05]"
                                 >
                                     <PlayCircle className="h-5 w-5 shrink-0 text-accent" />
@@ -228,6 +345,7 @@ export default function AiChatPage() {
                 <form onSubmit={onSubmit} className="flex gap-3 border-t border-white/10 p-4 sm:p-5">
                     <textarea
                         value={input}
+                        disabled={!sessionReady}
                         onChange={(event) => setInput(event.target.value)}
                         onKeyDown={(event) => {
                             if (event.key === "Enter" && !event.shiftKey) {
@@ -243,7 +361,7 @@ export default function AiChatPage() {
                     <Button
                         type="submit"
                         variant="primary"
-                        disabled={loading || !input.trim()}
+                        disabled={!sessionReady || loading || !input.trim()}
                         className="self-end"
                     >
                         <Send className="h-4 w-4" /> Send
@@ -252,7 +370,7 @@ export default function AiChatPage() {
             </div>
 
             <p className="text-center text-xs text-muted">
-                Gemini free-tier can power conversation when configured. AnimeVerse-specific availability is verified with local catalog tools; paid OpenAI API access is not required.
+                Your active chat is kept for this browser session while you move between AnimeVerse pages. New chat clears it intentionally.
             </p>
         </div>
     );
