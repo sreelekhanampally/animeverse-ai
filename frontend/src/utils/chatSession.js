@@ -56,6 +56,7 @@ export const loadAnimeChatSession = (userId) => {
             messages: sanitizeMessages(parsed.messages),
             sources: sanitizeSources(parsed.sources),
             draft: cleanText(parsed.draft, 2000),
+            voiceMode: Boolean(parsed.voiceMode),
             scrollY: Number.isFinite(parsed.scrollY) ? Math.max(0, parsed.scrollY) : 0,
             updatedAt: cleanText(parsed.updatedAt, 64),
         };
@@ -75,6 +76,7 @@ export const saveAnimeChatSession = (userId, session) => {
                 messages: sanitizeMessages(session?.messages),
                 sources: sanitizeSources(session?.sources),
                 draft: cleanText(session?.draft, 2000),
+                voiceMode: Boolean(session?.voiceMode),
                 scrollY: Number.isFinite(session?.scrollY) ? Math.max(0, session.scrollY) : 0,
                 updatedAt: new Date().toISOString(),
             })
