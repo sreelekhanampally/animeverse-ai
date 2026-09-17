@@ -53,9 +53,28 @@ export function useTrendingVideos({ limit = PAGE_SIZE } = {}) {
 }
 
 export function useRecommendedVideos({ limit = PAGE_SIZE } = {}) {
+    const userId = useAuthStore((s) => s.user?._id || "guest");
     return useQuery({
-        queryKey: ["videos", "recommended", limit],
+        queryKey: ["videos", "recommended", userId, limit],
         queryFn: async () => unwrapList(await aiService.recommendations(limit)),
+    });
+}
+
+export function useSimilarVideos(videoId, { limit = PAGE_SIZE } = {}) {
+    return useQuery({
+        queryKey: ["videos", "similar", videoId, limit],
+        enabled: !!videoId,
+        queryFn: async () => unwrapData(await aiService.similarVideos(videoId, limit)),
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
+export function useDiscoveryGraph(videoId, { limit = 10, enabled = true } = {}) {
+    return useQuery({
+        queryKey: ["videos", "discovery-graph", videoId, limit],
+        enabled: !!videoId && enabled,
+        queryFn: async () => unwrapData(await aiService.discoveryGraph(videoId, limit)),
+        staleTime: 5 * 60 * 1000,
     });
 }
 
@@ -183,6 +202,7 @@ export function useRemoveFromHistory() {
         onSettled: () => {
             qc.invalidateQueries({ queryKey: ["watch-history"] });
             qc.invalidateQueries({ queryKey: ["videos", "continue-watching"] });
+            qc.invalidateQueries({ queryKey: ["videos", "recommended"] });
         },
     });
 }
@@ -204,6 +224,7 @@ export function useClearHistory() {
         onSettled: () => {
             qc.invalidateQueries({ queryKey: ["watch-history"] });
             qc.invalidateQueries({ queryKey: ["videos", "continue-watching"] });
+            qc.invalidateQueries({ queryKey: ["videos", "recommended"] });
         },
     });
 }
@@ -270,6 +291,7 @@ export function useToggleWatchLater(video) {
                 return current.filter((item) => item?._id !== videoId);
             });
             qc.invalidateQueries({ queryKey: WATCH_LATER_KEY });
+            qc.invalidateQueries({ queryKey: ["videos", "recommended"] });
         },
     });
 }
@@ -379,6 +401,7 @@ export function useToggleVideoLike(videoId) {
         onSettled: () => {
             qc.invalidateQueries({ queryKey: ["video", videoId] });
             qc.invalidateQueries({ queryKey: LIKED_KEY });
+            qc.invalidateQueries({ queryKey: ["videos", "recommended"] });
         },
     });
 }

@@ -101,4 +101,10 @@ export const aiService = {
         apiClient.post("/ai/semantic-search", { query, limit }),
     chat: (messages) => apiClient.post("/ai/chat", { messages }),
     recommendations: (limit = 12) => apiClient.get("/ai/recommendations", { params: { limit } }),
+    similarVideos: (videoId, limit = 12) =>
+        apiClient.get(`/ai/videos/${videoId}/similar`, { params: { limit } }),
+    discoveryGraph: (videoId, limit = 10) =>
+        apiClient.get(`/ai/videos/${videoId}/graph`, { params: { limit } }),
+    buildCollection: (prompt, limit = 18) =>
+        apiClient.post("/ai/collections", { prompt, limit }),
 };

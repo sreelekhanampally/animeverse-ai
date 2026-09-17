@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Search, Sparkles, RefreshCw, Database, Youtube, Cloud } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { SectionHeader } from "@/features/home/SectionHeader";
-import { VideoCard, VideoCardSkeleton } from "@/features/video/VideoCard";
+import { VideoCardSkeleton } from "@/features/video/VideoCard";
+import { ExplainableVideoCard } from "@/features/discovery/ExplainableVideoCard";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -152,14 +153,18 @@ export default function AiSearchPage() {
                             const isYouTube = video?.sourceType === "youtube";
                             return (
                                 <div key={video?._id} className="space-y-2">
-                                    <div className="flex items-center justify-between gap-2 px-1 text-[11px] text-muted">
+                                    <div className="flex items-center gap-2 px-1 text-[11px] text-muted">
                                         <span className="inline-flex items-center gap-1">
                                             {isYouTube ? <Youtube className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
                                             {isYouTube ? "YouTube embed" : "Creator upload"}
                                         </span>
-                                        <span>{`relevance ${Math.round((result.score || 0) * 100)}`}</span>
                                     </div>
-                                    <VideoCard video={video} />
+                                    <ExplainableVideoCard
+                                        video={video}
+                                        reasons={result.reasons || []}
+                                        score={result.score}
+                                        label="Why it matched"
+                                    />
                                 </div>
                             );
                         })}

@@ -2,11 +2,17 @@ import mongoose, { isValidObjectId } from "mongoose";
 import { Video } from "../models/video.model.js";
 import { Comment } from "../models/comment.model.js";
 import { User } from "../models/user.model.js";
+import { Like } from "../models/like.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { buildVideoEmbeddingText } from "../utils/embeddingText.js";
 import { semanticVideoSearch } from "../services/semanticSearch.service.js";
+import {
+    buildDiscoveryGraph,
+    buildSemanticCollection,
+    findSimilarVideos,
+} from "../services/discovery.service.js";
 import { answerAnimeChat, describeChatProvider } from "../services/animeAssistant.service.js";
 import {
     summarizeVideo,
@@ -239,40 +245,100 @@ export const animeChat = asyncHandler(async (req, res) => {
     return res.json(new ApiResponse(200, result, "AnimeVerse assistant response"));
 });
 
+// GET /api/v1/ai/videos/:videoId/similar
+export const similarVideos = asyncHandler(async (req, res) => {
+    const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 12));
+    const payload = await findSimilarVideos(req.params.videoId, { limit });
+    return res.json(new ApiResponse(200, payload, "Similar videos ready"));
+});
+
+// GET /api/v1/ai/videos/:videoId/graph
+export const discoveryGraph = asyncHandler(async (req, res) => {
+    const limit = Math.min(16, Math.max(4, parseInt(req.query.limit) || 10));
+    const payload = await buildDiscoveryGraph(req.params.videoId, { limit });
+    return res.json(new ApiResponse(200, payload, "Semantic discovery graph ready"));
+});
+
+// POST /api/v1/ai/collections  { prompt, limit }
+export const semanticCollection = asyncHandler(async (req, res) => {
+    const rawLimit = req.body?.limit == null ? 18 : Number(req.body.limit);
+    if (!Number.isInteger(rawLimit) || rawLimit < 4 || rawLimit > 24) {
+        throw new ApiError(400, "limit must be an integer between 4 and 24");
+    }
+    const payload = await buildSemanticCollection(req.body?.prompt, { limit: rawLimit });
+    return res.json(new ApiResponse(200, payload, "Dynamic collection ready"));
+});
+
+const weightedCentroid = (entries = []) => {
+    const usable = entries.filter((entry) => isSearchableEmbedding(entry.video) && entry.weight > 0);
+    if (!usable.length) return null;
+    const dim = usable[0].video.embedding.length;
+    const vec = new Array(dim).fill(0);
+    let totalWeight = 0;
+    for (const { video, weight } of usable) {
+        if (video.embedding.length !== dim) continue;
+        totalWeight += weight;
+        for (let i = 0; i < dim; i += 1) vec[i] += video.embedding[i] * weight;
+    }
+    if (!totalWeight) return null;
+    return vec.map((value) => value / totalWeight);
+};
+
 // GET /api/v1/ai/recommendations
 export const recommendations = asyncHandler(async (req, res) => {
     const limit = Math.min(30, Math.max(1, parseInt(req.query.limit) || 12));
 
-    /**
-     * Unlike search, this endpoint stays available with no key at all. Its cold-start
-     * path is a views+recency ranking that never involved AI, so serving it is not a
-     * pretence — it is the same trending mix an unauthenticated visitor already got.
-     * Only the personalised taste vector needs embeddings.
-     */
     let seedEmbedding = null;
+    const signalCentroids = {};
+    const recentHistoryIds = [];
 
     if (req.user?._id && hasEmbeddingProvider()) {
-        const user = await User.findById(req.user._id).select("watchHistory").lean();
-        const historyIds = (user?.watchHistory || []).slice(0, 10);
-        const history = await Video.find({ _id: { $in: historyIds } })
-            .select(EMBEDDING_FIELDS)
-            .lean();
+        const [user, likes] = await Promise.all([
+            User.findById(req.user._id).select("watchHistory watchLater").lean(),
+            Like.find({ likedBy: req.user._id, video: { $exists: true, $ne: null } })
+                .sort({ createdAt: -1 })
+                .limit(20)
+                .select("video")
+                .lean(),
+        ]);
 
-        // Averaging is only valid across vectors from the same model and version;
-        // mixing a 32-float legacy vector in would previously have been silently
-        // dropped by a length check, quietly biasing the centroid.
-        const usable = history.filter(isSearchableEmbedding);
-        if (usable.length) {
-            const dim = usable[0].embedding.length;
-            const vec = new Array(dim).fill(0);
-            for (const item of usable) {
-                for (let i = 0; i < dim; i += 1) vec[i] += item.embedding[i];
-            }
-            seedEmbedding = vec.map((x) => x / usable.length);
+        const historyIds = (user?.watchHistory || []).slice(0, 12);
+        recentHistoryIds.push(...historyIds.map(String));
+        const watchLaterIds = (user?.watchLater || []).slice(0, 12);
+        const likedIds = likes.map((item) => item.video).filter(Boolean).slice(0, 16);
+
+        const allIds = [...new Set([...historyIds, ...watchLaterIds, ...likedIds].map(String))];
+        if (allIds.length) {
+            const seedVideos = await Video.find({ _id: { $in: allIds } })
+                .select(`${EMBEDDING_FIELDS} title`)
+                .lean();
+            const byId = new Map(seedVideos.map((video) => [String(video._id), video]));
+
+            const historyEntries = historyIds
+                .map((id, index) => ({ video: byId.get(String(id)), weight: Math.max(0.55, 1 - index * 0.04) }))
+                .filter((entry) => entry.video);
+            const likedEntries = likedIds
+                .map((id) => ({ video: byId.get(String(id)), weight: 1.35 }))
+                .filter((entry) => entry.video);
+            const watchLaterEntries = watchLaterIds
+                .map((id) => ({ video: byId.get(String(id)), weight: 0.85 }))
+                .filter((entry) => entry.video);
+
+            signalCentroids.history = weightedCentroid(historyEntries);
+            signalCentroids.likes = weightedCentroid(likedEntries);
+            signalCentroids.watchLater = weightedCentroid(watchLaterEntries);
+            seedEmbedding = weightedCentroid([
+                ...historyEntries,
+                ...likedEntries,
+                ...watchLaterEntries,
+            ]);
         }
     }
 
-    const candidates = await Video.find({ isPublished: true })
+    const candidateFilter = { isPublished: true };
+    if (recentHistoryIds.length) candidateFilter._id = { $nin: recentHistoryIds };
+
+    const candidates = await Video.find(candidateFilter)
         .select(`${EMBEDDING_FIELDS} title description thumbnail views duration owner tags category createdAt sourceType externalVideoId`)
         .populate("owner", "username fullName avatar")
         .sort({ createdAt: -1 })
@@ -281,18 +347,34 @@ export const recommendations = asyncHandler(async (req, res) => {
 
     let scored;
     if (seedEmbedding) {
+        const labels = {
+            likes: "Similar to videos you liked",
+            history: "Close to your recent watch history",
+            watchLater: "Matches videos you saved for later",
+        };
         scored = [];
         for (const video of candidates) {
             if (!isSearchableEmbedding(video)) continue;
             const score = cosineSimilarity(seedEmbedding, video.embedding);
             if (score === null) continue;
-            scored.push({ ...stripEmbedding(video), score });
+
+            const groupScores = Object.entries(signalCentroids)
+                .filter(([, centroid]) => centroid)
+                .map(([key, centroid]) => [key, cosineSimilarity(centroid, video.embedding)])
+                .filter(([, value]) => value !== null)
+                .sort((a, b) => b[1] - a[1]);
+            const strongestSignal = groupScores[0]?.[0];
+            scored.push({
+                ...stripEmbedding(video),
+                score,
+                recommendation: {
+                    mode: "personalized",
+                    score: Number(Math.max(0, score).toFixed(6)),
+                    reasons: strongestSignal ? [labels[strongestSignal]] : ["Matches your AnimeVerse activity"],
+                },
+            });
         }
         scored.sort((a, b) => b.score - a.score);
-
-        // If nothing in the corpus is indexed yet, a personalised list would be
-        // empty. Falling back to trending is better than an empty shelf, and the
-        // ranking is honest about what it is.
         if (!scored.length) seedEmbedding = null;
     }
 
@@ -304,6 +386,10 @@ export const recommendations = asyncHandler(async (req, res) => {
                 return {
                     ...stripEmbedding(video),
                     score: (video.views || 0) / Math.pow(ageDays + 2, 1.2),
+                    recommendation: {
+                        mode: "popular",
+                        reasons: ["Popular + recently added on AnimeVerse"],
+                    },
                 };
             })
             .sort((a, b) => b.score - a.score);

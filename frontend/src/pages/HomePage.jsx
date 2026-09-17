@@ -6,6 +6,7 @@ import { CategoryChips } from "@/features/home/CategoryChips";
 import { SectionHeader } from "@/features/home/SectionHeader";
 import { VideoRow } from "@/features/video/VideoRow";
 import { ContinueWatchingCard } from "@/features/video/ContinueWatchingCard";
+import { ExplainableVideoCard } from "@/features/discovery/ExplainableVideoCard";
 import {
     useLatestVideos,
     useRecommendedVideos,
@@ -103,6 +104,14 @@ export default function HomePage() {
                     error={recommended.error}
                     onRetry={() => recommended.refetch()}
                     skeletonCount={6}
+                    renderCard={(video) => (
+                        <ExplainableVideoCard
+                            video={video}
+                            reasons={video.recommendation?.reasons || []}
+                            score={video.recommendation?.score}
+                            label="Why recommended"
+                        />
+                    )}
                 />
             </section>
 

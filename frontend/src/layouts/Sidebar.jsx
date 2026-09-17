@@ -13,6 +13,7 @@ import {
     LayoutDashboard,
     Sparkles,
     Bot,
+    Compass,
     Settings,
     X,
 } from "lucide-react";
@@ -42,8 +43,9 @@ const CREATOR_ITEMS = [
 ];
 
 const AI_ITEMS = [
-    { to: PATHS.aiSearch, label: "Scene Search", icon: Sparkles, tint: "accent" },
-    { to: PATHS.aiChat, label: "Ask", icon: Bot, tint: "accent" },
+    { to: PATHS.aiSearch, label: "AI Search", icon: Sparkles, tint: "accent" },
+    { to: PATHS.aiDiscover, label: "Discovery Lab", icon: Compass, tint: "accent" },
+    { to: PATHS.aiChat, label: "AI Companion", icon: Bot, tint: "accent" },
 ];
 
 const SETTINGS_ITEMS = [{ to: PATHS.settings, label: "Settings", icon: Settings }];

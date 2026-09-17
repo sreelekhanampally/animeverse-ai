@@ -10,6 +10,7 @@ import {
     compareRankedResults,
     lexicalMatchScore,
 } from "../utils/semanticRanking.js";
+import { explainSearchMatch } from "../utils/discoveryExplain.js";
 
 const EMBEDDING_FIELDS =
     "+embedding +embeddingModel +embeddingDimensions +embeddingVersion +embeddingTextHash +embeddingGeneratedAt";
@@ -120,7 +121,7 @@ export async function semanticVideoSearch(query, { limit = 20, maxCandidates = 1
         safeVideo.sourceType = safeVideo.sourceType || "cloudinary";
         safeVideo.anime = publicAnime(anime);
 
-        ranked.push({
+        const result = {
             video: safeVideo,
             score,
             semanticScore: Number(Math.max(-1, Math.min(1, videoSemantic)).toFixed(6)),
@@ -132,7 +133,9 @@ export async function semanticVideoSearch(query, { limit = 20, maxCandidates = 1
                     : animeSemantic > videoSemantic
                       ? "linked_anime_semantic"
                       : "metadata_semantic",
-        });
+        };
+        result.reasons = explainSearchMatch(query, result);
+        ranked.push(result);
     }
 
     ranked.sort(compareRankedResults);

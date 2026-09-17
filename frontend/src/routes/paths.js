@@ -12,6 +12,7 @@ export const PATHS = {
     upload: "/upload",
     dashboard: "/dashboard",
     aiSearch: "/ai/search",
+    aiDiscover: "/ai/discover",
     aiChat: "/ai/chat",
     settings: "/settings",
     login: "/login",

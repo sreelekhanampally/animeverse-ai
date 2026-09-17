@@ -9,6 +9,9 @@ import {
     semanticSearchPost,
     animeChat,
     recommendations,
+    similarVideos,
+    discoveryGraph,
+    semanticCollection,
     videoCommentSentiment,
     translate,
     transcribe,
@@ -40,6 +43,9 @@ router.get("/search", semanticSearchLimiter, semanticSearch);
 router.post("/semantic-search", semanticSearchLimiter, semanticSearchPost);
 router.post("/chat", chatLimiter, animeChat);
 router.get("/recommendations", optionalJWT, recommendations);
+router.get("/videos/:videoId/similar", semanticSearchLimiter, similarVideos);
+router.get("/videos/:videoId/graph", semanticSearchLimiter, discoveryGraph);
+router.post("/collections", semanticSearchLimiter, semanticCollection);
 router.get("/videos/:videoId/summary", getVideoSummary);
 router.get("/videos/:videoId/sentiment", videoCommentSentiment);
 
