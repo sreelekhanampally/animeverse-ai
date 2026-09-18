@@ -64,10 +64,14 @@ export const watchLaterService = {
 
 export const communityService = {
     posts: (params) => apiClient.get("/community/posts", { params }),
+    post: (postId) => apiClient.get(`/community/posts/${postId}`),
     createPost: (payload) => apiClient.post("/community/posts", payload),
     upvote: (postId) => apiClient.post(`/community/posts/${postId}/upvote`),
     vote: (postId, optionIndex) => apiClient.post(`/community/posts/${postId}/vote`, { optionIndex }),
     removePost: (postId) => apiClient.delete(`/community/posts/${postId}`),
+    comments: (postId) => apiClient.get(`/community/posts/${postId}/comments`),
+    addComment: (postId, payload) => apiClient.post(`/community/posts/${postId}/comments`, payload),
+    removeComment: (postId, commentId) => apiClient.delete(`/community/posts/${postId}/comments/${commentId}`),
     clubs: () => apiClient.get("/community/clubs"),
 };
 

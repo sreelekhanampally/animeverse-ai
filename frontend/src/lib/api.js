@@ -124,8 +124,12 @@ export const communityApi = {
     join: (id) => api.post(`/community/clubs/${id}/join`),
     leave: (id) => api.post(`/community/clubs/${id}/leave`),
     posts: (params) => api.get("/community/posts", { params }),
+    post: (id) => api.get(`/community/posts/${id}`),
     createPost: (payload) => api.post("/community/posts", payload),
     upvote: (id) => api.post(`/community/posts/${id}/upvote`),
     votePoll: (id, optionIndex) => api.post(`/community/posts/${id}/vote`, { optionIndex }),
+    comments: (id) => api.get(`/community/posts/${id}/comments`),
+    addComment: (id, payload) => api.post(`/community/posts/${id}/comments`, payload),
+    removeComment: (id, commentId) => api.delete(`/community/posts/${id}/comments/${commentId}`),
     removePost: (id) => api.delete(`/community/posts/${id}`),
 };

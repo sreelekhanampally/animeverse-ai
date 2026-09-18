@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Users, Send, MessageCircle, Newspaper, BarChart3, Image as ImageIcon } from "lucide-react";
 import { SectionHeader } from "@/features/home/SectionHeader";
 import { CommunityPreview } from "@/features/community/CommunityPreview";
@@ -20,20 +21,34 @@ const TYPES = [
     { value: "meme", label: "Meme", icon: ImageIcon },
 ];
 
+const VALID_TYPES = new Set(TYPES.map((item) => item.value));
+
 export default function CommunityPage() {
     const { user } = useAuth();
     const toast = useToast();
-    const [filter, setFilter] = useState("");
+    const [searchParams, setSearchParams] = useSearchParams();
+    const queryType = searchParams.get("type") || "";
+    const filter = VALID_TYPES.has(queryType) ? queryType : "";
+
     const [type, setType] = useState("discussion");
     const [title, setTitle] = useState("");
     const [content, setContent] = useState("");
     const [imageUrl, setImageUrl] = useState("");
     const [pollOptions, setPollOptions] = useState(["", ""]);
 
-    const { data, isLoading, error, refetch } = useCommunityFeed({ limit: 30, type: filter || undefined });
+    const filterItems = useMemo(() => [{ value: "", label: "All" }, ...TYPES], []);
+    const { data, isLoading, error, refetch } = useCommunityFeed({
+        limit: 30,
+        type: filter || undefined,
+    });
     const createPost = useCreateCommunityPost();
     const upvote = useUpvoteCommunityPost();
     const vote = useVoteCommunityPost();
+
+    const setFilter = (value) => {
+        if (value) setSearchParams({ type: value });
+        else setSearchParams({});
+    };
 
     const submit = async (event) => {
         event.preventDefault();
@@ -59,14 +74,14 @@ export default function CommunityPage() {
             setContent("");
             setImageUrl("");
             setPollOptions(["", ""]);
-            toast.success("Posted to the community");
+            toast.success("Post published");
         } catch (err) {
             toast.error(extractErrorMessage(err, "Couldn't publish your post"));
         }
     };
 
     const onUpvote = async (post) => {
-        if (!user) return toast.info("Sign in to upvote community posts");
+        if (!user) return toast.info("Sign in to upvote posts");
         try {
             await upvote.mutateAsync(post._id);
         } catch (err) {
@@ -88,7 +103,7 @@ export default function CommunityPage() {
             <SectionHeader
                 icon={Users}
                 title="Community"
-                subtitle="Discuss anime, share news, run polls, and trade recommendations with other fans."
+                subtitle="Talk anime, share news, run polls, and join ongoing discussions."
             />
 
             {user ? (
@@ -123,7 +138,7 @@ export default function CommunityPage() {
                         onChange={(event) => setContent(event.target.value)}
                         maxLength={1200}
                         rows={3}
-                        placeholder="Add context, your take, or a recommendation."
+                        placeholder="Add some context or your take."
                         className="w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-white outline-none placeholder:text-muted focus:border-primary/50"
                     />
 
@@ -154,7 +169,7 @@ export default function CommunityPage() {
                                     className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white outline-none placeholder:text-muted focus:border-primary/50"
                                 />
                             ))}
-                            {pollOptions.length < 4 && (
+                            {pollOptions.length < 6 && (
                                 <button
                                     type="button"
                                     onClick={() => setPollOptions((current) => [...current, ""])}
@@ -178,12 +193,12 @@ export default function CommunityPage() {
                 </form>
             ) : (
                 <div className="rounded-2xl border border-white/10 bg-card/50 p-4 text-sm text-muted">
-                    Browsing is public. Sign in when you want to publish, vote, or upvote.
+                    You can read everything here. Sign in to post, reply, vote, or upvote.
                 </div>
             )}
 
             <div className="flex flex-wrap gap-2">
-                {[{ value: "", label: "All" }, ...TYPES].map((item) => (
+                {filterItems.map((item) => (
                     <button
                         key={item.value || "all"}
                         type="button"

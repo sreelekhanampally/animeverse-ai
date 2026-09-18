@@ -10,6 +10,7 @@ import { FullPageLoader } from "@/components/common/FullPageLoader";
 const HomePage = lazy(() => import("@/pages/HomePage.jsx"));
 const TrendingPage = lazy(() => import("@/pages/TrendingPage.jsx"));
 const CommunityPage = lazy(() => import("@/pages/CommunityPage.jsx"));
+const CommunityPostPage = lazy(() => import("@/pages/CommunityPostPage.jsx"));
 const SubscriptionsPage = lazy(() => import("@/pages/SubscriptionsPage.jsx"));
 const PlaylistsPage = lazy(() => import("@/pages/PlaylistsPage.jsx"));
 const PlaylistDetailPage = lazy(() => import("@/pages/PlaylistDetailPage.jsx"));
@@ -42,6 +43,7 @@ export function AppRoutes() {
                     <Route path={PATHS.home} element={<HomePage />} />
                     <Route path={PATHS.trending} element={<TrendingPage />} />
                     <Route path={PATHS.community} element={<CommunityPage />} />
+                    <Route path="/community/:postId" element={<CommunityPostPage />} />
                     <Route path="/watch/:videoId" element={<WatchPage />} />
                     {/* Public: /users/c/:username uses optionalJWT, so guests can browse channels */}
                     <Route path="/c/:username" element={<ChannelPage />} />

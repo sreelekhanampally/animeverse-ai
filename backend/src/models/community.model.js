@@ -14,7 +14,7 @@ const fanClubSchema = new Schema(
     { timestamps: true }
 );
 
-// Community post (discussion / meme / news share)
+// Community post (discussion / meme / news / poll)
 const postSchema = new Schema(
     {
         type: {
@@ -30,7 +30,8 @@ const postSchema = new Schema(
         author: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
         upvotes: [{ type: Schema.Types.ObjectId, ref: "User" }],
 
-        // for polls
+        // Poll state stays server-side. Feed responses expose only counts and the
+        // current viewer's selected option, never the voter id arrays.
         pollOptions: [
             {
                 text: String,
@@ -39,7 +40,7 @@ const postSchema = new Schema(
         ],
         pollClosesAt: { type: Date },
 
-        // AI enrichment
+        // Optional enrichment fields used by future discovery features.
         aiSentiment: { type: String, default: "" },
         tags: { type: [String], default: [] },
     },
@@ -48,5 +49,42 @@ const postSchema = new Schema(
 
 postSchema.plugin(mongooseAggregatePaginate);
 
+// Discussion replies are separate from video comments. This keeps community
+// threads independently queryable and avoids mixing two unrelated comment types.
+const communityCommentSchema = new Schema(
+    {
+        post: {
+            type: Schema.Types.ObjectId,
+            ref: "CommunityPost",
+            required: true,
+            index: true,
+        },
+        author: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+            index: true,
+        },
+        content: {
+            type: String,
+            required: true,
+            trim: true,
+            maxlength: 1200,
+        },
+        // One level of replies is enough for a readable card-style community.
+        // The controller prevents replies-to-replies from becoming deeper trees.
+        parent: {
+            type: Schema.Types.ObjectId,
+            ref: "CommunityComment",
+            default: null,
+            index: true,
+        },
+    },
+    { timestamps: true }
+);
+
+communityCommentSchema.index({ post: 1, createdAt: 1 });
+
 export const FanClub = mongoose.model("FanClub", fanClubSchema);
 export const CommunityPost = mongoose.model("CommunityPost", postSchema);
+export const CommunityComment = mongoose.model("CommunityComment", communityCommentSchema);

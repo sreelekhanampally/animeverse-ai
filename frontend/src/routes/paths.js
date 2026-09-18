@@ -23,5 +23,6 @@ export const PATHS = {
     notFound: "*",
 };
 
-/** Channel pages are dynamic, so they're a builder rather than a constant. */
+/** Dynamic routes use builders so callers do not hand-build URLs. */
+export const communityPostPath = (postId) => `/community/${postId}`;
 export const channelPath = (username) => `/c/${username}`;
