@@ -40,30 +40,19 @@ const VOICE_LANGUAGE = "en-US";
 const createStarter = () => ({
     role: "assistant",
     content:
-        "Hey! I’m your AnimeVerse anime assistant. Ask me about characters, stories, power systems, watch order, recommendations, or tell me what you want to find in the AnimeVerse catalog.",
+        "Hey! Ask me about anime, or tell me what kind of video you want to find.",
     provider: "AnimeVerse",
     systemStarter: true,
 });
 
 const QUICK_PROMPTS = [
-    "Recommend a short anime for this weekend",
-    "Explain Jujutsu Kaisen's power system without major spoilers",
-    "Find Gojo videos in AnimeVerse",
-    "Is Monster available in AnimeVerse?",
+    "Show me dark psychological anime",
+    "Explain Jujutsu Kaisen's power system without spoilers",
+    "Find Gojo videos",
+    "Do we have Monster videos?",
 ];
 
-const providerLabel = (provider, usedCatalog) => {
-    if (!provider) return "";
-    if (provider.startsWith("gemini:")) {
-        return usedCatalog ? "Gemini + AnimeVerse tools" : "Gemini anime expert";
-    }
-    if (provider.startsWith("ollama:")) {
-        return usedCatalog ? "Local model + AnimeVerse tools" : "Local anime model";
-    }
-    if (provider === "local-retrieval") return "AnimeVerse local retrieval";
-    if (provider === "local-conversation") return "AnimeVerse local fallback";
-    return provider;
-};
+const providerLabel = (_provider, usedCatalog) => (usedCatalog ? "Searched AnimeVerse" : "");
 
 export default function AiChatPage() {
     const { user, loading: authLoading } = useAuth();
@@ -381,7 +370,7 @@ export default function AiChatPage() {
             <SectionHeader
                 icon={Bot}
                 title="AnimeVerse Assistant"
-                subtitle="An anime expert that can also search your live AnimeVerse catalog when you need it."
+                subtitle="Ask about anime or search the AnimeVerse catalog."
                 action={
                     <Button
                         variant="ghost"
@@ -397,13 +386,13 @@ export default function AiChatPage() {
 
             <div className="flex flex-wrap gap-2">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-muted">
-                    <Sparkles className="h-3.5 w-3.5 text-accent" /> General anime conversation
+                    <Sparkles className="h-3.5 w-3.5 text-accent" /> Ask about anime
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-muted">
-                    <Search className="h-3.5 w-3.5 text-accent" /> AnimeVerse catalog tools
+                    <Search className="h-3.5 w-3.5 text-accent" /> Search AnimeVerse
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-muted">
-                    <ShieldCheck className="h-3.5 w-3.5 text-accent" /> Spoiler-aware by default
+                    <ShieldCheck className="h-3.5 w-3.5 text-accent" /> Spoilers hidden by default
                 </span>
                 <button
                     type="button"
@@ -470,7 +459,7 @@ export default function AiChatPage() {
 
                                         {assistant && !message.systemStarter && (
                                             <div className="flex items-center justify-between gap-3 px-2">
-                                                <div className="text-[11px] text-muted/80">{label}</div>
+                                                {label ? <div className="text-[11px] text-muted/80">{label}</div> : <span />}
                                                 {voiceCapabilities.synthesis && (
                                                     <button
                                                         type="button"
@@ -531,10 +520,10 @@ export default function AiChatPage() {
                 {sources.length > 0 && (
                     <div className="border-t border-white/5 px-4 py-4 sm:px-6">
                         <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted">
-                            AnimeVerse catalog results used
+                            Videos from AnimeVerse
                         </p>
                         <p className="mb-3 text-xs text-muted/70">
-                            These cards come from stored AnimeVerse metadata. The assistant does not inspect YouTube media itself.
+                            These videos came from the AnimeVerse catalog.
                         </p>
                         <div className="grid gap-2 sm:grid-cols-2">
                             {sources.slice(0, 4).map((source) => (
@@ -628,8 +617,8 @@ export default function AiChatPage() {
                         maxLength={2000}
                         placeholder={
                             listening
-                                ? "Listening… speak naturally"
-                                : "Ask about anime, or say: Find me Gojo videos in AnimeVerse..."
+                                ? "Listening…"
+                                : "Ask about anime or search AnimeVerse…"
                         }
                         className="min-h-[52px] flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-muted/70 focus:border-primary/60"
                     />
@@ -645,7 +634,7 @@ export default function AiChatPage() {
             </div>
 
             <p className="text-center text-xs text-muted">
-                Your active chat is kept for this browser session. Voice input uses your browser microphone service; spoken replies use your device voices. You can always type instead.
+                This conversation stays here while this tab is open.
             </p>
         </div>
     );

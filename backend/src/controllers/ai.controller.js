@@ -437,8 +437,8 @@ export const recommendations = asyncHandler(async (req, res) => {
     if (seedEmbedding) {
         const labels = {
             likes: "Similar to videos you liked",
-            history: "Close to your recent watch history",
-            watchLater: "Matches videos you saved for later",
+            history: "Similar to videos you watched",
+            watchLater: "Similar to videos you saved",
         };
         scored = [];
         for (const video of candidates) {
@@ -458,7 +458,7 @@ export const recommendations = asyncHandler(async (req, res) => {
                 recommendation: {
                     mode: "personalized",
                     score: Number(Math.max(0, score).toFixed(6)),
-                    reasons: strongestSignal ? [labels[strongestSignal]] : ["Matches your AnimeVerse activity"],
+                    reasons: strongestSignal ? [labels[strongestSignal]] : ["Based on your activity"],
                 },
             });
         }
@@ -476,7 +476,7 @@ export const recommendations = asyncHandler(async (req, res) => {
                     score: (video.views || 0) / Math.pow(ageDays + 2, 1.2),
                     recommendation: {
                         mode: "popular",
-                        reasons: ["Popular + recently added on AnimeVerse"],
+                        reasons: ["Popular and recently added"],
                     },
                 };
             })

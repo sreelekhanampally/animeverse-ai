@@ -28,7 +28,7 @@ export function SemanticGraph({ graph, className }) {
     if (!source) {
         return (
             <div className={cn("rounded-2xl border border-white/5 bg-white/[0.02] p-6 text-sm text-muted", className)}>
-                No semantic graph is available for this video yet.
+                No related videos to map yet.
             </div>
         );
     }
@@ -36,7 +36,7 @@ export function SemanticGraph({ graph, className }) {
     return (
         <div className={cn("space-y-3", className)}>
             <div className="flex items-center gap-2 text-sm font-medium text-white">
-                <Network className="h-4 w-4 text-accent" /> Semantic neighborhood
+                <Network className="h-4 w-4 text-accent" /> Related video map
             </div>
             <div className="relative h-[420px] overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-primary/[0.08] via-card/70 to-accent/[0.05]">
                 <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
@@ -89,12 +89,12 @@ export function SemanticGraph({ graph, className }) {
                         <div className="mt-1.5 line-clamp-2 text-[10px] font-medium leading-tight text-white/90">
                             {node.video?.title}
                         </div>
-                        <div className="mt-1 text-[9px] text-accent">{Math.round((node.score || 0) * 100)}% nearby</div>
+                        <div className="mt-1 text-[9px] text-accent">{Math.round((node.score || 0) * 100)}% match</div>
                     </button>
                 ))}
             </div>
             <p className="text-xs leading-relaxed text-muted">
-                Distance is derived from local MiniLM embeddings plus lightweight anime/metadata overlap. It is a discovery map, not a social graph.
+                Closer links mean stronger similarity.
             </p>
         </div>
     );

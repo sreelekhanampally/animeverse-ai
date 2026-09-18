@@ -107,7 +107,7 @@ export async function buildSemanticCollection(prompt, { limit = 18 } = {}) {
     return {
         prompt: query,
         title: query.length > 64 ? `${query.slice(0, 61).trim()}…` : query,
-        description: "Built live from AnimeVerse semantic embeddings and linked anime metadata.",
+        description: "Matched from the AnimeVerse catalog.",
         results,
         diagnostics,
     };

@@ -49,9 +49,9 @@ export function explainSimilarityMatch(sourceVideo, candidateVideo, semanticScor
     const genres = sharedValues(sourceAnime?.genres, candidateAnime?.genres).slice(0, 2);
     if (genres.length) reasons.push(`Shared genre: ${genres.map(labelCase).join(", ")}`);
 
-    if (semanticScore >= 0.55) reasons.push("Very close semantic meaning");
-    else if (semanticScore >= 0.32) reasons.push("Similar themes and metadata");
-    else if (semanticScore > 0) reasons.push("Related semantic signal");
+    if (semanticScore >= 0.55) reasons.push("Very similar theme");
+    else if (semanticScore >= 0.32) reasons.push("Similar themes");
+    else if (semanticScore > 0) reasons.push("Related theme");
 
     const tags = sharedValues(sourceVideo?.tags, candidateVideo?.tags).slice(0, 2);
     if (tags.length) reasons.push(`Shared tag: ${tags.map(labelCase).join(", ")}`);
@@ -76,17 +76,17 @@ export function explainSearchMatch(query, result) {
     const characterTokens = (anime?.characters || []).flatMap((character) => tokenizeSearchText(character?.name));
     const genres = uniqueNormalized(anime?.genres || []);
 
-    if (titleTokens.some((token) => queryTokens.has(token))) reasons.push("Video title matches your words");
+    if (titleTokens.some((token) => queryTokens.has(token))) reasons.push("Title match");
     if (animeTitleTokens.some((token) => queryTokens.has(token))) reasons.push("Anime title match");
     if (characterTokens.some((token) => queryTokens.has(token))) reasons.push("Character match");
 
     const genreMatches = genres.filter((genre) => tokenizeSearchText(genre).some((token) => queryTokens.has(token)));
     if (genreMatches.length) reasons.push(`Genre match: ${genreMatches.slice(0, 2).map(labelCase).join(", ")}`);
 
-    if ((result?.animeScore || 0) >= 0.35) reasons.push("Linked anime metadata matches the description");
-    if ((result?.semanticScore || 0) >= 0.4) reasons.push("Video metadata is semantically close");
-    else if ((result?.semanticScore || 0) > 0) reasons.push("Semantic similarity signal");
+    if ((result?.animeScore || 0) >= 0.35) reasons.push("Story/details match");
+    if ((result?.semanticScore || 0) >= 0.4) reasons.push("Similar theme");
+    else if ((result?.semanticScore || 0) > 0) reasons.push("Related theme");
 
-    if (!reasons.length && (result?.score || 0) > 0) reasons.push("Combined semantic + metadata match");
+    if (!reasons.length && (result?.score || 0) > 0) reasons.push("Close overall match");
     return [...new Set(reasons)].slice(0, 3);
 }

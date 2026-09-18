@@ -117,7 +117,7 @@ export default function WatchPage() {
                                 {similarResults.length ? "More like this" : "Up Next"}
                             </h3>
                             {similarResults.length > 0 && (
-                                <p className="mt-1 text-[10px] text-muted">Semantic neighbors from AnimeVerse embeddings</p>
+                                <p className="mt-1 text-[10px] text-muted">Videos with similar themes and ideas</p>
                             )}
                         </div>
                     </div>
@@ -152,7 +152,7 @@ export default function WatchPage() {
                             ))
                           : relatedVideos.slice(0, 10).map((v) => <SuggestedVideoRow key={v._id} video={v} />)}
                     {!similar.isLoading && !suggested.isLoading && relatedVideos.length === 0 && (
-                        <p className="text-sm text-muted">No suggestions yet — try another category.</p>
+                        <p className="text-sm text-muted">No related videos yet.</p>
                     )}
                 </div>
             </aside>
@@ -160,15 +160,15 @@ export default function WatchPage() {
             <Modal
                 open={graphOpen}
                 onClose={() => setGraphOpen(false)}
-                title="Semantic similarity map"
-                description="Explore videos near this one in AnimeVerse's local embedding space."
+                title="Related video map"
+                description="See videos that are closest to this one."
                 size="xl"
             >
                 {graph.isLoading ? (
-                    <div className="flex h-[420px] items-center justify-center text-sm text-muted">Building map…</div>
+                    <div className="flex h-[420px] items-center justify-center text-sm text-muted">Loading map…</div>
                 ) : graph.error ? (
                     <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-100">
-                        Could not build the semantic map right now.
+                        Could not load the map right now.
                     </div>
                 ) : (
                     <SemanticGraph graph={graph.data} />

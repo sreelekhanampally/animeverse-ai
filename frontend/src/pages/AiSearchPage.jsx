@@ -11,10 +11,10 @@ import { aiService } from "@/services";
 import { extractErrorMessage } from "@/services/apiClient";
 
 const EXAMPLES = [
-    "Naruto fighting Pain",
-    "alchemy brothers restoring their bodies",
-    "time travel experiments gone wrong",
-    "high school volleyball team",
+    "Naruto vs Pain",
+    "two brothers using alchemy",
+    "time travel experiment anime",
+    "high school volleyball anime",
 ];
 
 export default function AiSearchPage() {
@@ -41,7 +41,7 @@ export default function AiSearchPage() {
             setResults(response?.data?.data?.results || []);
         } catch (err) {
             setResults([]);
-            setError(extractErrorMessage(err, "AI search is unavailable right now."));
+            setError(extractErrorMessage(err, "Search is unavailable right now."));
         } finally {
             setLoading(false);
         }
@@ -68,7 +68,7 @@ export default function AiSearchPage() {
             <SectionHeader
                 icon={Sparkles}
                 title="AI Search"
-                subtitle="Describe an anime, character, theme, or video in natural language."
+                subtitle="Search by title, character, theme, or whatever you remember."
             />
 
             <form onSubmit={onSubmit} className="gradient-border rounded-2xl">
@@ -76,7 +76,7 @@ export default function AiSearchPage() {
                     <Input
                         value={query}
                         onChange={(event) => setQuery(event.target.value)}
-                        placeholder="e.g. two brothers using alchemy to restore their bodies"
+                        placeholder="e.g. two brothers using alchemy"
                         leftIcon={<Search className="h-4 w-4" />}
                         className="flex-1"
                         maxLength={300}
@@ -91,7 +91,7 @@ export default function AiSearchPage() {
             {!hasSearched && (
                 <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
                     <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                        <Database className="h-4 w-4 text-accent" /> Try a natural-language search
+                        <Database className="h-4 w-4 text-accent" /> Try one of these
                     </div>
                     <div className="flex flex-wrap gap-2">
                         {EXAMPLES.map((example) => (
@@ -109,7 +109,7 @@ export default function AiSearchPage() {
                         ))}
                     </div>
                     <p className="mt-4 text-xs leading-relaxed text-muted">
-                        Search is grounded in AnimeVerse metadata and stored embeddings. It does not claim exact YouTube scene timestamps or inspect YouTube media.
+                        Search works best with titles, characters, themes, or story details.
                     </p>
                 </div>
             )}
@@ -134,8 +134,8 @@ export default function AiSearchPage() {
             {!loading && hasSearched && !error && results.length === 0 && (
                 <EmptyState
                     icon={Search}
-                    title="No indexed match found"
-                    message="Try an anime title, character, genre, or a broader description."
+                    title="No matches found"
+                    message="Try a shorter phrase, a title, character, or genre."
                 />
             )}
 
@@ -143,9 +143,9 @@ export default function AiSearchPage() {
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <p className="text-sm text-muted">
-                            {results.length} ranked result{results.length === 1 ? "" : "s"}
+                            {results.length} result{results.length === 1 ? "" : "s"}
                         </p>
-                        <span className="text-xs text-muted">Semantic + title-aware ranking</span>
+                        <span className="text-xs text-muted">Best matches first</span>
                     </div>
                     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
                         {results.map((result) => {
@@ -163,7 +163,7 @@ export default function AiSearchPage() {
                                         video={video}
                                         reasons={result.reasons || []}
                                         score={result.score}
-                                        label="Why it matched"
+                                        label="Why this?"
                                     />
                                 </div>
                             );

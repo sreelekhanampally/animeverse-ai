@@ -10,12 +10,12 @@ import { aiService } from "@/services";
 import { extractErrorMessage } from "@/services/apiClient";
 
 const PRESETS = [
-    "dark psychological anime trailers",
-    "high-energy shonen promos",
+    "dark psychological trailers",
+    "high-energy shonen",
     "emotional anime videos",
-    "cyberpunk and dystopian anime",
-    "sports anime hype videos",
-    "beautiful fantasy anime trailers",
+    "cyberpunk anime",
+    "sports hype videos",
+    "fantasy trailers",
 ];
 
 export default function DiscoveryPage() {
@@ -31,7 +31,7 @@ export default function DiscoveryPage() {
     const runCollection = async (rawPrompt = prompt) => {
         const q = String(rawPrompt || "").trim();
         if (q.length < 2) {
-            setError("Describe the kind of anime video collection you want.");
+            setError("Tell us what kind of videos you want.");
             return;
         }
         setLoading(true);
@@ -75,13 +75,13 @@ export default function DiscoveryPage() {
         <div className="space-y-8">
             <SectionHeader
                 icon={Compass}
-                title="AI Discovery Lab"
-                subtitle="Build live collections from the catalogue, see why videos matched, and explore the semantic neighborhood around the strongest result."
+                title="Discovery Lab"
+                subtitle="Build a collection around a mood, theme, genre, or style."
             />
 
             <section className="rounded-3xl border border-white/10 bg-gradient-to-br from-primary/[0.08] via-card/70 to-accent/[0.05] p-5 sm:p-6">
                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <WandSparkles className="h-4 w-4 text-accent" /> Describe a collection
+                    <WandSparkles className="h-4 w-4 text-accent" /> What are you in the mood for?
                 </div>
                 <form
                     className="mt-4 flex flex-col gap-3 md:flex-row"
@@ -93,13 +93,13 @@ export default function DiscoveryPage() {
                     <Input
                         value={prompt}
                         onChange={(event) => setPrompt(event.target.value)}
-                        placeholder="e.g. intense anime trailers with cyberpunk themes"
+                        placeholder="e.g. dark cyberpunk trailers"
                         className="flex-1"
                         maxLength={240}
                     />
                     <Button type="submit" variant="primary" disabled={loading || prompt.trim().length < 2}>
                         {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        {loading ? "Building" : "Build collection"}
+                        {loading ? "Finding videos" : "Find videos"}
                     </Button>
                 </form>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -128,8 +128,8 @@ export default function DiscoveryPage() {
             {!collection && !loading && !error && (
                 <EmptyState
                     icon={Compass}
-                    title="Create a semantic collection"
-                    message="AnimeVerse will rank real catalogue videos using local embeddings and linked anime metadata."
+                    title="Start with a theme"
+                    message="Try a mood, genre, visual style, character, or story idea."
                 />
             )}
 
@@ -137,12 +137,11 @@ export default function DiscoveryPage() {
                 <section className="space-y-4">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                         <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Live semantic collection</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Collection</div>
                             <h2 className="mt-1 font-display text-2xl font-semibold text-white">{collectionTitle}</h2>
-                            <p className="mt-1 text-sm text-muted">{collection.description}</p>
                         </div>
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-muted">
-                            {resultCount} ranked videos
+                            {resultCount} videos
                         </span>
                     </div>
 
@@ -153,7 +152,7 @@ export default function DiscoveryPage() {
                                 video={result.video}
                                 reasons={result.reasons}
                                 score={result.score}
-                                label="Why it belongs"
+                                label="Why this?"
                             />
                         ))}
                     </div>
@@ -165,13 +164,13 @@ export default function DiscoveryPage() {
                     <div className="mb-4 flex items-center gap-2">
                         <Network className="h-5 w-5 text-accent" />
                         <div>
-                            <h2 className="font-display text-lg font-semibold text-white">Semantic map around the top match</h2>
-                            <p className="text-xs text-muted">A visual neighborhood built from stored video embeddings.</p>
+                            <h2 className="font-display text-lg font-semibold text-white">Explore related videos</h2>
+                            <p className="text-xs text-muted">A quick map of videos closest to the top result.</p>
                         </div>
                     </div>
                     {graphLoading ? (
                         <div className="flex h-[420px] items-center justify-center rounded-2xl border border-white/5 bg-white/[0.02] text-sm text-muted">
-                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Building semantic map…
+                            <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Loading map…
                         </div>
                     ) : (
                         <SemanticGraph graph={graph} />

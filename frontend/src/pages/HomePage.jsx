@@ -44,8 +44,8 @@ export default function HomePage() {
                     title={genre === "All" ? "Browse the catalogue" : `${genre} picks`}
                     subtitle={
                         genre === "All"
-                            ? "Choose a genre to reshape this row using the genres stored with each anime."
-                            : `Videos linked to anime tagged ${genre} in the catalogue.`
+                            ? "Pick a genre to update this row."
+                            : `${genre} videos from the catalogue.`
                     }
                 />
                 <CategoryChips value={genre} onChange={setGenre} />
@@ -66,7 +66,7 @@ export default function HomePage() {
                 <SectionHeader
                     icon={Flame}
                     title="Most watched on AnimeVerse"
-                    subtitle="Ranked by the platform's real view counts, highest first."
+                    subtitle="The videos getting the most views right now."
                     to={PATHS.trending}
                 />
                 <VideoRow
@@ -83,18 +83,18 @@ export default function HomePage() {
             <section>
                 <SectionHeader
                     icon={Sparkles}
-                    title={user ? "Recommended for you" : "Recommended starting points"}
+                    title={user ? "Recommended for you" : "Popular picks"}
                     subtitle={
                         user
-                            ? "Uses your recent watch history when compatible embeddings are available, then ranks nearby videos."
-                            : "A view-and-recency mix for visitors who do not have watch history yet."
+                            ? "Based on what you've watched, liked, and saved."
+                            : "Popular and recent videos to get you started."
                     }
                     action={
                         <Link
                             to={PATHS.aiSearch}
                             className="text-xs font-medium text-accent hover:text-white"
                         >
-                            Try AI Search
+                            Search by description
                         </Link>
                     }
                 />
@@ -120,7 +120,7 @@ export default function HomePage() {
                     <SectionHeader
                         icon={PlayCircle}
                         title="Recently watched"
-                        subtitle="Your history is kept newest-first so you can jump back into something you opened recently."
+                        subtitle="Videos you opened recently."
                         to={PATHS.history}
                     />
                     <VideoRow
@@ -140,8 +140,8 @@ export default function HomePage() {
                 <section>
                     <SectionHeader
                         icon={Heart}
-                        title="Because you liked these creators"
-                        subtitle="More videos from a creator behind something you liked."
+                        title="More from creators you liked"
+                        subtitle="More from creators you've liked before."
                         to={PATHS.liked}
                     />
                     <VideoRow
@@ -151,7 +151,7 @@ export default function HomePage() {
                         onRetry={() => basedOnLikes.refetch()}
                         emptyIcon={Heart}
                         emptyTitle="Like some videos"
-                        emptyMessage="Like content and this row will learn which creators to revisit."
+                        emptyMessage="Like a few videos and more from those creators will show up here."
                     />
                 </section>
             )}
@@ -160,7 +160,7 @@ export default function HomePage() {
                 <SectionHeader
                     icon={UploadCloud}
                     title="Creator originals"
-                    subtitle="Videos uploaded directly by AnimeVerse creators and played from Cloudinary."
+                    subtitle="Uploaded directly by AnimeVerse creators."
                     action={
                         user ? (
                             <Link
@@ -179,7 +179,7 @@ export default function HomePage() {
                     onRetry={() => creatorOriginals.refetch()}
                     emptyIcon={UploadCloud}
                     emptyTitle="No creator uploads yet"
-                    emptyMessage="Creator uploads will appear here separately from YouTube embeds."
+                    emptyMessage="Creator uploads will appear here."
                 />
             </section>
 
@@ -187,7 +187,7 @@ export default function HomePage() {
                 <SectionHeader
                     icon={Rocket}
                     title="New on AnimeVerse"
-                    subtitle="The newest published additions across creator uploads and imported anime videos."
+                    subtitle="Recently added videos."
                 />
                 <VideoRow
                     videos={latest.data}
