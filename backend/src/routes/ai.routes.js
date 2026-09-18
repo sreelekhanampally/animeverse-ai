@@ -12,6 +12,8 @@ import {
     similarVideos,
     discoveryGraph,
     semanticCollection,
+    aiEvaluation,
+    runAiEvaluation,
     videoCommentSentiment,
     translate,
     transcribe,
@@ -37,6 +39,13 @@ const chatLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+const evaluationRunLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 4,
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 // Public / optional-auth
 router.get("/health", aiHealth);
 router.get("/search", semanticSearchLimiter, semanticSearch);
@@ -46,6 +55,8 @@ router.get("/recommendations", optionalJWT, recommendations);
 router.get("/videos/:videoId/similar", semanticSearchLimiter, similarVideos);
 router.get("/videos/:videoId/graph", semanticSearchLimiter, discoveryGraph);
 router.post("/collections", semanticSearchLimiter, semanticCollection);
+router.get("/evaluation", aiEvaluation);
+router.post("/evaluation/run", evaluationRunLimiter, runAiEvaluation);
 router.get("/videos/:videoId/summary", getVideoSummary);
 router.get("/videos/:videoId/sentiment", videoCommentSentiment);
 

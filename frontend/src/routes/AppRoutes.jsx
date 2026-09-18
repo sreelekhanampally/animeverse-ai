@@ -23,6 +23,7 @@ const DashboardPage = lazy(() => import("@/pages/DashboardPage.jsx"));
 const ChannelPage = lazy(() => import("@/pages/ChannelPage.jsx"));
 const AiSearchPage = lazy(() => import("@/pages/AiSearchPage.jsx"));
 const DiscoveryPage = lazy(() => import("@/pages/DiscoveryPage.jsx"));
+const AiEvaluationPage = lazy(() => import("@/pages/AiEvaluationPage.jsx"));
 const AiChatPage = lazy(() => import("@/pages/AiChatPage.jsx"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage.jsx"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage.jsx"));
@@ -46,6 +47,7 @@ export function AppRoutes() {
                     <Route path="/c/:username" element={<ChannelPage />} />
                     <Route path={PATHS.aiSearch} element={<AiSearchPage />} />
                     <Route path={PATHS.aiDiscover} element={<DiscoveryPage />} />
+                    <Route path={PATHS.aiEvaluation} element={<AiEvaluationPage />} />
                     <Route path={PATHS.aiChat} element={<AiChatPage />} />
 
                     {/* Protected sections */}

@@ -107,4 +107,6 @@ export const aiService = {
         apiClient.get(`/ai/videos/${videoId}/graph`, { params: { limit } }),
     buildCollection: (prompt, limit = 18) =>
         apiClient.post("/ai/collections", { prompt, limit }),
+    evaluation: () => apiClient.get("/ai/evaluation"),
+    runEvaluation: () => apiClient.post("/ai/evaluation/run"),
 };

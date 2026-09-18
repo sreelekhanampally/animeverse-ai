@@ -14,6 +14,8 @@ import {
     findSimilarVideos,
 } from "../services/discovery.service.js";
 import { answerAnimeChat, describeChatProvider } from "../services/animeAssistant.service.js";
+import { getAiEvaluationSnapshot, runRetrievalBenchmark } from "../services/aiEvaluation.service.js";
+import { recordAiOperation } from "../services/aiObservability.service.js";
 import {
     summarizeVideo,
     askVideo,
@@ -191,7 +193,23 @@ const runSemanticSearch = async (q, limit) => {
     if (!hasEmbeddingProvider()) {
         return null;
     }
-    return semanticVideoSearch(q, { limit });
+
+    const startedAt = performance.now();
+    try {
+        const payload = await semanticVideoSearch(q, { limit });
+        recordAiOperation("semanticSearch", {
+            durationMs: performance.now() - startedAt,
+            success: true,
+        });
+        return payload;
+    } catch (error) {
+        recordAiOperation("semanticSearch", {
+            durationMs: performance.now() - startedAt,
+            success: false,
+            errorCode: error?.code || error?.name || "SEARCH_ERROR",
+        });
+        throw error;
+    }
 };
 
 // GET /api/v1/ai/search?q=...
@@ -241,22 +259,61 @@ export const semanticSearchPost = asyncHandler(async (req, res) => {
 // call AnimeVerse catalogue tools on demand. Ollama/local retrieval remain free fallbacks.
 export const animeChat = asyncHandler(async (req, res) => {
     const messages = req.body?.messages;
-    const result = await answerAnimeChat(messages);
-    return res.json(new ApiResponse(200, result, "AnimeVerse assistant response"));
+    const startedAt = performance.now();
+    try {
+        const result = await answerAnimeChat(messages);
+        recordAiOperation("chat", {
+            durationMs: performance.now() - startedAt,
+            success: true,
+            provider: result.provider,
+            toolCalls: result.toolCalls || 0,
+            usedCatalog: Boolean(result.usedCatalog),
+        });
+        return res.json(new ApiResponse(200, result, "AnimeVerse assistant response"));
+    } catch (error) {
+        recordAiOperation("chat", {
+            durationMs: performance.now() - startedAt,
+            success: false,
+            errorCode: error?.code || error?.name || "CHAT_ERROR",
+        });
+        throw error;
+    }
 });
 
 // GET /api/v1/ai/videos/:videoId/similar
 export const similarVideos = asyncHandler(async (req, res) => {
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit) || 12));
-    const payload = await findSimilarVideos(req.params.videoId, { limit });
-    return res.json(new ApiResponse(200, payload, "Similar videos ready"));
+    const startedAt = performance.now();
+    try {
+        const payload = await findSimilarVideos(req.params.videoId, { limit });
+        recordAiOperation("similarVideos", { durationMs: performance.now() - startedAt, success: true });
+        return res.json(new ApiResponse(200, payload, "Similar videos ready"));
+    } catch (error) {
+        recordAiOperation("similarVideos", {
+            durationMs: performance.now() - startedAt,
+            success: false,
+            errorCode: error?.code || error?.name || "SIMILAR_ERROR",
+        });
+        throw error;
+    }
 });
 
 // GET /api/v1/ai/videos/:videoId/graph
 export const discoveryGraph = asyncHandler(async (req, res) => {
     const limit = Math.min(16, Math.max(4, parseInt(req.query.limit) || 10));
-    const payload = await buildDiscoveryGraph(req.params.videoId, { limit });
-    return res.json(new ApiResponse(200, payload, "Semantic discovery graph ready"));
+    const startedAt = performance.now();
+    try {
+        const payload = await buildDiscoveryGraph(req.params.videoId, { limit });
+        recordAiOperation("discoveryGraph", { durationMs: performance.now() - startedAt, success: true });
+        return res.json(new ApiResponse(200, payload, "Semantic discovery graph ready"));
+    } catch (error) {
+        recordAiOperation("discoveryGraph", {
+            durationMs: performance.now() - startedAt,
+            success: false,
+            errorCode: error?.code || error?.name || "GRAPH_ERROR",
+        });
+        throw error;
+    }
 });
 
 // POST /api/v1/ai/collections  { prompt, limit }
@@ -265,8 +322,39 @@ export const semanticCollection = asyncHandler(async (req, res) => {
     if (!Number.isInteger(rawLimit) || rawLimit < 4 || rawLimit > 24) {
         throw new ApiError(400, "limit must be an integer between 4 and 24");
     }
-    const payload = await buildSemanticCollection(req.body?.prompt, { limit: rawLimit });
-    return res.json(new ApiResponse(200, payload, "Dynamic collection ready"));
+
+    const startedAt = performance.now();
+    try {
+        const payload = await buildSemanticCollection(req.body?.prompt, { limit: rawLimit });
+        recordAiOperation("collections", { durationMs: performance.now() - startedAt, success: true });
+        return res.json(new ApiResponse(200, payload, "Dynamic collection ready"));
+    } catch (error) {
+        recordAiOperation("collections", {
+            durationMs: performance.now() - startedAt,
+            success: false,
+            errorCode: error?.code || error?.name || "COLLECTION_ERROR",
+        });
+        throw error;
+    }
+});
+
+// GET /api/v1/ai/evaluation
+// Sanitized system snapshot for the recruiter-facing AI Evaluation Lab. No keys,
+// embeddings, prompts or private user data are returned. Runtime metrics reset on restart.
+export const aiEvaluation = asyncHandler(async (_req, res) => {
+    const snapshot = await getAiEvaluationSnapshot();
+    return res.json(new ApiResponse(200, snapshot, "AI evaluation snapshot"));
+});
+
+// POST /api/v1/ai/evaluation/run
+// Runs a small deterministic local retrieval benchmark. This is intentionally
+// manual + aggressively rate-limited because it performs several embedding/search passes.
+export const runAiEvaluation = asyncHandler(async (_req, res) => {
+    const benchmark = await runRetrievalBenchmark();
+    const snapshot = await getAiEvaluationSnapshot();
+    return res.json(
+        new ApiResponse(200, { ...snapshot, benchmark }, "AI retrieval benchmark complete")
+    );
 });
 
 const weightedCentroid = (entries = []) => {

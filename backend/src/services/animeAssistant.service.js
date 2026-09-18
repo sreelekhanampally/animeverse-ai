@@ -374,6 +374,7 @@ export async function answerAnimeChat(messages) {
                 sources,
                 usedCatalog: generated.toolEvents.length > 0,
                 grounded: generated.toolEvents.length > 0,
+                toolCalls: generated.toolEvents.length,
             };
         } catch (error) {
             // Provider/network/quota failures may degrade gracefully, but a real

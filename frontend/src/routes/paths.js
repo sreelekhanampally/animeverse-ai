@@ -13,6 +13,7 @@ export const PATHS = {
     dashboard: "/dashboard",
     aiSearch: "/ai/search",
     aiDiscover: "/ai/discover",
+    aiEvaluation: "/ai/evaluation",
     aiChat: "/ai/chat",
     settings: "/settings",
     login: "/login",

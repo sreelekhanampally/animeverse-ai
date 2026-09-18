@@ -14,6 +14,7 @@ import {
     Sparkles,
     Bot,
     Compass,
+    Activity,
     Settings,
     X,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const CREATOR_ITEMS = [
 const AI_ITEMS = [
     { to: PATHS.aiSearch, label: "AI Search", icon: Sparkles, tint: "accent" },
     { to: PATHS.aiDiscover, label: "Discovery Lab", icon: Compass, tint: "accent" },
+    { to: PATHS.aiEvaluation, label: "AI Evaluation", icon: Activity, tint: "accent" },
     { to: PATHS.aiChat, label: "AI Companion", icon: Bot, tint: "accent" },
 ];
 
