@@ -14,7 +14,15 @@
     "backfill:embeddings": "node src/scripts/backfillEmbeddings.js",
     "test": "node --test",
     "grow:catalog": "node src/scripts/growCatalog.js",
-    "seed:community": "node src/scripts/seedCommunity.js"
+    "seed:community": "node src/scripts/seedCommunity.js",
+    "deploy:check": "node src/scripts/deploymentCheck.js",
+    "deploy:check:db": "node src/scripts/deploymentCheck.js --db",
+    "test:hardening": "node --test tests/productionHardening.test.mjs",
+    "catalog:audit": "node src/scripts/auditCatalogQuality.js",
+    "catalog:audit:live": "node src/scripts/auditCatalogQuality.js --live",
+    "catalog:quarantine": "node src/scripts/auditCatalogQuality.js --live --quarantine",
+    "catalog:associations": "node src/scripts/auditCatalogAssociations.js",
+    "catalog:associations:apply": "node src/scripts/auditCatalogAssociations.js --apply"
   },
   "keywords": [
     "animeverse",

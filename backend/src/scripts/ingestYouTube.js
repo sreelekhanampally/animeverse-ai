@@ -185,6 +185,7 @@ const run = async () => {
      *                    only the deficit and skips anime already at the target.
      */
     const totalCap = Boolean(args["total-cap"]);
+    const qualityFirst = Boolean(args["quality-first"]);
     const perAnime = Math.max(1, Math.min(Number(args["per-anime"]) || 3, MAX_VIDEOS_PER_ANIME));
     const queryOffset = Math.max(0, Math.min(Number(args["query-offset"]) || 0, QUERY_TEMPLATES.length - 1));
     const queriesPerAnime = Math.max(
@@ -221,6 +222,7 @@ const run = async () => {
         limit,
         offset,
         metadataSource,
+        qualityFirst,
     });
 
     if (!animeList.length) {
@@ -236,7 +238,7 @@ const run = async () => {
     resetQuotaUsage();
 
     console.log(
-        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime${offset ? ` (popularity offset ${offset})` : ""}${metadataSource ? ` [metadataSource=${metadataSource}]` : ""} x ` +
+        `${dryRun ? "DRY RUN — " : ""}YouTube ingestion: ${animeList.length} anime${offset ? ` (${qualityFirst ? "coverage" : "popularity"} offset ${offset})` : ""}${metadataSource ? ` [metadataSource=${metadataSource}]` : ""}${qualityFirst ? " [quality-first]" : ""} x ` +
             (totalCap
                 ? `up to ${perAnime} TOTAL video(s) each (top-up mode)`
                 : `up to ${perAnime} new video(s) each (ceiling ${MAX_VIDEOS_PER_ANIME} total)`) +

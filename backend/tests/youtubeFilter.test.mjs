@@ -12,7 +12,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+    assessAnimeEntityRelevance,
     assessQuality,
+    animeEntityAliases,
     animeRelevanceTokens,
     channelMatchesTerm,
     computeSlots,
@@ -180,7 +182,7 @@ test("relevance: title variants all match, not just title.display", () => {
 test("relevance: an unrelated title is rejected as off-topic", () => {
     const verdict = assessQuality(playable({ title: "Bleach Official Trailer" }), { anime: NARUTO });
     assert.equal(verdict.ok, false);
-    assert.match(verdict.reason, /off-topic/);
+    assert.match(verdict.reason, /anime entity mismatch/);
 });
 
 test("relevance: generic tokens alone are not sufficient", () => {
@@ -203,6 +205,204 @@ test("relevance: a title made only of common words still matches as a phrase", (
     };
     assert.ok(matchAnimeTokens("Your Name Official Trailer", yourName).matched.length > 0);
     assert.equal(matchAnimeTokens("Name That Trailer", yourName).matched.length, 0);
+});
+
+
+test("REGRESSION: D.Gray-man must not accept The Gray Man from a trusted Netflix channel", () => {
+    const dGrayMan = {
+        title: {
+            english: "D.Gray-man",
+            romaji: "D.Gray-man",
+            native: "ディー・グレイマン",
+            display: "D.Gray-man",
+        },
+        studios: [],
+    };
+
+    const verdict = assessQuality(
+        playable({
+            title: "THE GRAY MAN | Official Trailer | Netflix",
+            channelTitle: "Netflix",
+            description: "Ryan Gosling, Chris Evans and Ana de Armas star in The Gray Man.",
+        }),
+        { anime: dGrayMan }
+    );
+
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /anime entity collision/i);
+});
+
+test("entity identity: D.Gray-man punctuation and native-script titles still match", () => {
+    const dGrayMan = {
+        title: {
+            english: "D.Gray-man",
+            romaji: "D.Gray-man",
+            native: "ディー・グレイマン",
+            display: "D.Gray-man",
+        },
+        studios: [],
+    };
+
+    for (const title of [
+        "D.Gray-man HALLOW Official PV",
+        "D Gray Man Hallow Trailer",
+        "ディー・グレイマン HALLOW PV",
+    ]) {
+        const match = assessAnimeEntityRelevance({ title, channelTitle: "Unknown" }, dGrayMan);
+        assert.equal(match.ok, true, `${title} should identify D.Gray-man`);
+    }
+});
+
+test("entity identity: reviewed abbreviations work without fuzzy title guessing", () => {
+    const attackOnTitan = {
+        title: {
+            english: "Attack on Titan",
+            romaji: "Shingeki no Kyojin",
+            native: "進撃の巨人",
+            display: "Attack on Titan",
+        },
+        studios: [],
+    };
+
+    const aliases = animeEntityAliases(attackOnTitan).map((row) => row.normalized);
+    assert.ok(aliases.includes("aot"));
+    const verdict = assessAnimeEntityRelevance(
+        { title: "AOT Final Season Official Trailer", channelTitle: "Unknown" },
+        attackOnTitan
+    );
+    assert.equal(verdict.ok, true, verdict.reason);
+});
+
+test("entity identity: overlapping title words do not create a cross-anime association", () => {
+    const blackClover = {
+        title: { english: "Black Clover", romaji: "Black Clover", native: "ブラッククローバー", display: "Black Clover" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Black Butler Official Trailer", channelTitle: "Crunchyroll" },
+        blackClover
+    );
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /anime entity mismatch/i);
+});
+
+test("REGRESSION: Death Note anime still rejects trusted live-action trailers", () => {
+    const deathNote = {
+        title: { english: "Death Note", romaji: "Death Note", native: "DEATH NOTE", display: "Death Note" },
+        studios: [],
+    };
+    const verdict = assessQuality(
+        playable({
+            title: "DEATH NOTE Official Trailer (2017) Nat Wolff | Netflix",
+            channelTitle: "Netflix",
+        }),
+        { anime: deathNote }
+    );
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /live-action|casting/i);
+});
+
+
+test("REGRESSION: release-year qualifiers do not make Hunter x Hunter official titles ambiguous", () => {
+    const hunter = {
+        title: {
+            english: "Hunter x Hunter (2011)",
+            romaji: "Hunter x Hunter (2011)",
+            native: "HUNTER×HUNTER",
+            display: "Hunter x Hunter (2011)",
+        },
+        studios: [],
+    };
+
+    for (const title of [
+        "Hunter X Hunter - Opening 1 | Departure!",
+        "Hunter x Hunter: The Last Mission - Official Theatrical Trailer",
+        "Hunter X Hunter Set 1- Official Extended Trailer",
+    ]) {
+        const verdict = assessAnimeEntityRelevance({ title, channelTitle: "VIZ Media" }, hunter);
+        assert.equal(verdict.ok, true, `${title} should identify Hunter x Hunter despite the catalogue year qualifier`);
+    }
+
+    const aliases = animeEntityAliases(hunter).map((row) => row.normalized);
+    assert.ok(aliases.includes("hunter x hunter"));
+    assert.ok(aliases.includes("hxh"));
+});
+
+test("REGRESSION: Tokyo Ghoul supports native title and one-token human typo", () => {
+    const tokyoGhoul = {
+        title: {
+            english: "Tokyo Ghoul",
+            romaji: "Tokyo Ghoul",
+            native: "東京喰種",
+            display: "Tokyo Ghoul",
+        },
+        studios: [],
+    };
+
+    const native = assessAnimeEntityRelevance(
+        { title: "「unravel」×『東京喰種』TV Animation 10th Anniversary Collaboration MV", channelTitle: "Official" },
+        tokyoGhoul
+    );
+    assert.equal(native.ok, true, native.reason);
+
+    const typo = assessAnimeEntityRelevance(
+        { title: "Katharsis - Toyko Ghoul | Prime Video", channelTitle: "Prime Video" },
+        tokyoGhoul
+    );
+    assert.equal(typo.ok, true, typo.reason);
+});
+
+test("REGRESSION: Tokyo Ghoul does not accept Netflix's unrelated Ghoul trailer", () => {
+    const tokyoGhoul = {
+        title: { english: "Tokyo Ghoul", romaji: "Tokyo Ghoul", native: "東京喰種", display: "Tokyo Ghoul" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Ghoul | Official Trailer [HD] | Netflix", channelTitle: "Netflix" },
+        tokyoGhoul
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+    assert.match(verdict.reason, /entity collision/i);
+});
+
+test("REGRESSION: The Promised Neverland rejects unrelated Neverland films", () => {
+    const promisedNeverland = {
+        title: {
+            english: "The Promised Neverland",
+            romaji: "Yakusoku no Neverland",
+            native: "約束のネバーランド",
+            display: "The Promised Neverland",
+        },
+        studios: [],
+    };
+
+    for (const title of [
+        "Finding Neverland | Official Trailer (HD) - Johnny Depp, Kate Winslet | MIRAMAX",
+        "Peter Pan's Neverland Nightmare - Official Trailer (2025)",
+    ]) {
+        const verdict = assessAnimeEntityRelevance({ title, channelTitle: "Official Movies" }, promisedNeverland);
+        assert.equal(verdict.ok, false, title);
+        assert.equal(verdict.safeToQuarantine, true, title);
+        assert.match(verdict.reason, /entity collision/i);
+    }
+});
+
+test("observed licensed title shorthand: Full Alchemist Brotherhood maps to Fullmetal Alchemist Brotherhood", () => {
+    const fmab = {
+        title: {
+            english: "Fullmetal Alchemist: Brotherhood",
+            romaji: "Hagane no Renkinjutsushi: FULLMETAL ALCHEMIST",
+            native: "鋼の錬金術師 FULLMETAL ALCHEMIST",
+            display: "Fullmetal Alchemist: Brotherhood",
+        },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Full Alchemist: Brotherhood - Trailer (English Dub)", channelTitle: "Official" },
+        fmab
+    );
+    assert.equal(verdict.ok, true, verdict.reason);
 });
 
 /* ========================================================================== *
@@ -840,4 +1040,179 @@ test("slots: --total-cap cannot exceed the hard ceiling", () => {
         MAX_VIDEOS_PER_ANIME - 5,
         "only remaining headroom may be imported"
     );
+});
+/* ========================================================================== *
+ * Association matcher refinement v2 — live audit regressions
+ * ========================================================================== */
+
+test("REGRESSION: Re:ZERO shorthand still identifies the full catalogue title", () => {
+    const anime = {
+        title: {
+            english: "Re:ZERO -Starting Life in Another World-",
+            romaji: "Re:Zero kara Hajimeru Isekai Seikatsu",
+            native: "Re：ゼロから始める異世界生活",
+            display: "Re:ZERO -Starting Life in Another World-",
+        },
+        studios: [],
+    };
+    for (const title of ["Re:ZERO S2 - Opening (HD)", "Re:ZERO (Anime-Trailer)"]) {
+        const verdict = assessAnimeEntityRelevance({ title, channelTitle: "Crunchyroll" }, anime);
+        assert.equal(verdict.ok, true, `${title} should identify Re:ZERO`);
+    }
+});
+
+test("REGRESSION: Evangelion franchise titles map to Neon Genesis Evangelion", () => {
+    const anime = {
+        title: {
+            english: "Neon Genesis Evangelion",
+            romaji: "Shin Seiki Evangelion",
+            native: "新世紀エヴァンゲリオン",
+            display: "Neon Genesis Evangelion",
+        },
+        studios: [],
+    };
+    for (const title of [
+        "THE END OF EVANGELION | Official Trailer",
+        "EVANGELION:DEATH (TRUE)² & REBIRTH | Official Trailer",
+        "EVANGELION: 3.0+1.01 THRICE UPON A TIME - Official Trailer | Prime Video",
+        "Evangelion - New Anime Reveal Trailer",
+    ]) {
+        const verdict = assessAnimeEntityRelevance({ title, channelTitle: "Prime Video" }, anime);
+        assert.equal(verdict.ok, true, `${title} should identify the Evangelion franchise`);
+    }
+});
+
+test("REGRESSION: Kaguya-sama Japanese franchise title is accepted", () => {
+    const anime = {
+        title: {
+            english: "Kaguya-sama: Love is War",
+            romaji: "Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen",
+            native: "かぐや様は告らせたい～天才たちの恋愛頭脳戦～",
+            display: "Kaguya-sama: Love is War",
+        },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "TVアニメ「かぐや様は告らせたい-ファーストキッスは終わらない-」ノンクレジットオープニング映像", channelTitle: "Aniplex" },
+        anime
+    );
+    assert.equal(verdict.ok, true, verdict.reason);
+});
+
+test("REGRESSION: Anohana long Japanese romanized title maps to Anohana", () => {
+    const anime = {
+        title: {
+            english: "Anohana: The Flower We Saw That Day",
+            romaji: "Ano Hi Mita Hana no Namae wo Bokutachi wa Mada Shiranai.",
+            native: "あの日見た花の名前を僕達はまだ知らない。",
+            display: "Anohana: The Flower We Saw That Day",
+        },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "[Trailer] Ano Hi Mita Hana no Namae o Bokutachi wa Mada Shiranai [Sub Esp]", channelTitle: "Unknown" },
+        anime
+    );
+    assert.equal(verdict.ok, true, verdict.reason);
+});
+
+test("REGRESSION: Assassination Classroom rejects Classroom of the Elite", () => {
+    const anime = {
+        title: { english: "Assassination Classroom", romaji: "Ansatsu Kyoushitsu", native: "暗殺教室", display: "Assassination Classroom" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Classroom of the elite | HINDI DUB | official teaser", channelTitle: "Unknown" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+    assert.match(verdict.reason, /Classroom of the Elite/i);
+});
+
+test("REGRESSION: Chainsaw Man rejects Texas Chainsaw Massacre", () => {
+    const anime = {
+        title: { english: "Chainsaw Man", romaji: "Chainsaw Man", native: "チェンソーマン", display: "Chainsaw Man" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "TEXAS CHAINSAW MASSACRE | Official Trailer | Netflix", channelTitle: "Netflix" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+});
+
+test("REGRESSION: Spirited Away rejects Apple's Spirited movie trailer", () => {
+    const anime = {
+        title: { english: "Spirited Away", romaji: "Sen to Chihiro no Kamikakushi", native: "千と千尋の神隠し", display: "Spirited Away" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Spirited — Official Trailer | Apple TV", channelTitle: "Apple TV" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+});
+
+
+test("REGRESSION: legitimate Spirited Away titles are never mistaken for Apple's Spirited", () => {
+    const anime = {
+        title: { english: "Spirited Away", romaji: "Sen to Chihiro no Kamikakushi", native: "千と千尋の神隠し", display: "Spirited Away" },
+        studios: [],
+    };
+
+    for (const title of [
+        "SPIRITED AWAY | Official English Trailer",
+        "Spirited Away 15th Anniversary Limited Edition - Official Trailer",
+        "Spirited Away - Celebrate Studio Ghibli - Official Trailer",
+        "SPIRITED AWAY: Live On Stage Trailer",
+        "Spirited Away - Studio Ghibli Fest 2019 Trailer [In Theaters October 2019]",
+        "SPIRITED AWAY | Vintage Trailer (2001)",
+        "Spirited Away | Official Trailer | Now Available On Digital and On-Demand",
+    ]) {
+        const verdict = assessAnimeEntityRelevance({ title, channelTitle: "Unknown" }, anime);
+        assert.notEqual(verdict.status, "collision", `${title} must not be classified as the separate movie Spirited`);
+        assert.equal(verdict.ok, true, `${title} should identify Spirited Away`);
+    }
+});
+
+test("REGRESSION: My Dress-Up Darling rejects DARLING in the FRANXX", () => {
+    const anime = {
+        title: { english: "My Dress-Up Darling", romaji: "Sono Bisque Doll wa Koi wo Suru", native: "その着せ替え人形は恋をする", display: "My Dress-Up Darling" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "DARLING in the FRANXX - Opening (HD)", channelTitle: "Unknown" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+});
+
+test("REGRESSION: Made in Abyss rejects Kaiju No. 8", () => {
+    const anime = {
+        title: { english: "Made in Abyss", romaji: "Made in Abyss", native: "メイドインアビス", display: "Made in Abyss" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "アニメ『怪獣８号』ノンクレジットOP｜YUNGBLUD『Abyss』", channelTitle: "TOHO animation" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
+});
+
+test("REGRESSION: Samurai Champloo rejects Blue Eye Samurai", () => {
+    const anime = {
+        title: { english: "Samurai Champloo", romaji: "Samurai Champloo", native: "サムライチャンプルー", display: "Samurai Champloo" },
+        studios: [],
+    };
+    const verdict = assessAnimeEntityRelevance(
+        { title: "Blue Eye Samurai: Season 2 | Official Teaser | Netflix", channelTitle: "Netflix" },
+        anime
+    );
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.safeToQuarantine, true);
 });

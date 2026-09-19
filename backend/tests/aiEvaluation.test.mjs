@@ -76,10 +76,10 @@ test("evaluation dashboard is wired into the frontend without exposing embedding
     const routes = read("frontend/src/routes/AppRoutes.jsx");
     const sidebar = read("frontend/src/layouts/Sidebar.jsx");
 
-    assert.match(page, /Top-1 accuracy/);
-    assert.match(page, /Recall@5/);
-    assert.match(page, /Runtime operations/);
-    assert.match(page, /Video embedding coverage/);
+    assert.match(page, /label="Top-1"/);
+    assert.match(page, /Top-5 recall/);
+    assert.match(page, /Runtime metrics/);
+    assert.match(page, /Video coverage/);
     assert.doesNotMatch(page, /\.embedding\s*\[/);
     assert.match(services, /evaluation: \(\) => apiClient\.get\("\/ai\/evaluation"\)/);
     assert.match(routes, /AiEvaluationPage/);

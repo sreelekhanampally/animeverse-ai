@@ -120,6 +120,7 @@ export default function AiEvaluationPage() {
     const chatMetric = data.runtime?.operations?.chat;
     const chat = data.assistant || {};
     const gemini = chat.gemini || {};
+    const circuit = gemini.circuit || {};
 
     return (
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -187,6 +188,7 @@ export default function AiEvaluationPage() {
                     <div className="mt-4 rounded-xl border border-white/10 bg-black/10 p-4 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-white/50">Gemini model</span><span className="text-white/80">{gemini.model || "—"}</span></div>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-white/50">Backup models</span><span className="text-right text-white/70">{gemini.fallbackModels?.join(", ") || "—"}</span></div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-white/50">Provider circuit</span><span className="text-white/80">{circuit.state || "—"}{Number.isFinite(circuit.failures) ? ` · ${circuit.failures} failures` : ""}</span></div>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-white/50">Tool calls</span><span className="text-white/80">{data.runtime?.chat?.toolCalls ?? 0}</span></div>
                         <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-white/50">Catalog lookups</span><span className="text-white/80">{data.runtime?.chat?.catalogGroundedChats ?? 0}</span></div>
                     </div>

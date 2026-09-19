@@ -437,9 +437,10 @@ export function isAnimeOwnChannel(channelTitle, anime) {
     const flat = flattenName(channelTitle);
     if (!flat.length || !OFFICIAL_MARKER_RE.test(String(channelTitle))) return false;
 
-    const { distinctive, phrases } = animeRelevanceTokens(anime);
-    const candidates = [...distinctive, ...phrases].filter((t) => flattenName(t).length >= 4);
-    return candidates.some((t) => flat.includes(flattenName(t)));
+    // A channel calling itself "The Gray Man Official" must never become the
+    // D.Gray-man series account merely because both contain "gray". Reuse the
+    // strict entity matcher instead of the older single-token heuristic.
+    return matchAnimeEntityIdentityText(channelTitle, anime).ok;
 }
 
 // Han / Hiragana / Katakana runs, used to keep native titles matchable.
@@ -530,12 +531,529 @@ export function matchAnimeTokens(videoTitle, anime) {
     return { matched: hits, supporting, hasVocabulary: Boolean(distinctive.length || phrases.length) };
 }
 
+
+/* ========================================================================== *
+ * STRICT ANIME ENTITY MATCHING
+ *
+ * Search relevance is not entity identity. YouTube can answer a query for
+ * "D.Gray-man trailer" with Netflix's "The Gray Man". A trusted uploader only
+ * proves that the upload is legitimate; it does not prove that the upload is
+ * about the Anime document we are attaching it to.
+ *
+ * This matcher is intentionally stricter than `matchAnimeTokens`, which remains
+ * useful as a lightweight diagnostic. It prefers complete aliases, preserves
+ * meaningful one-letter/number tokens (the "D" in D.Gray-man, "86" in 86),
+ * understands native-script titles, and supports a small reviewed abbreviation
+ * table. Partial token overlap is evidence for manual review, never enough to
+ * create an association by itself.
+ * ========================================================================== */
+
+const ENTITY_STOPWORDS = new Set([
+    "the", "a", "an", "and", "or", "of", "on", "in", "to", "for", "with",
+    "from", "by", "at", "into", "no", "wa",
+]);
+
+/**
+ * Human-reviewed aliases that are common enough to appear in official titles but
+ * cannot be derived safely from punctuation alone. Keys and aliases are kept
+ * deliberately small; this is not a fuzzy-name database.
+ */
+export const REVIEWED_TITLE_ALIASES = new Map([
+    ["attack on titan", ["AOT"]],
+    ["fullmetal alchemist brotherhood", ["FMAB", "FMA Brotherhood", "Full Alchemist Brotherhood"]],
+    ["my hero academia", ["MHA", "Boku no Hero Academia"]],
+    ["jujutsu kaisen", ["JJK"]],
+    ["hunter x hunter", ["HxH", "Hunter Hunter"]],
+    ["tokyo ghoul", ["Tokyo Guru", "Toyko Ghoul", "東京喰種"]],
+    ["d gray man", ["DGM"]],
+    ["86 eighty six", ["86"]],
+
+    // Franchise / alternate-title aliases surfaced by the live association audit.
+    // These are intentionally reviewed rather than generated fuzzily.
+    ["re zero starting life in another world", ["Re:ZERO", "Re Zero"]],
+    ["neon genesis evangelion", ["Evangelion", "The End of Evangelion", "Evangelion Death True", "Evangelion 3.0+1.01"]],
+    ["kaguya sama love is war", ["かぐや様は告らせたい"]],
+    ["anohana the flower we saw that day", [
+        "Anohana",
+        "Ano Hi Mita Hana no Namae o Bokutachi wa Mada Shiranai",
+        "あの日見た花の名前を僕達はまだ知らない",
+    ]],
+]);
+
+/**
+ * Reviewed title collisions. These are not generic blacklists; each rule is
+ * scoped to one Anime identity and records a known, repeatable false association.
+ */
+export const REVIEWED_ENTITY_COLLISIONS = new Map([
+    [
+        "d gray man",
+        [
+            { pattern: /\bthe\s+gray\s+man\b/i, label: "The Gray Man" },
+            { pattern: /\b(ryan\s+gosling|dhanush|chris\s+evans|ana\s+de\s+armas)\b/i, label: "The Gray Man cast" },
+        ],
+    ],
+    [
+        "monster",
+        [
+            { pattern: /\bmonster\s+(hunter|high|energy|trucks?)\b/i, label: "different Monster title/product" },
+        ],
+    ],
+    [
+        "orange",
+        [
+            { pattern: /\borange\s+is\s+the\s+new\s+black\b/i, label: "Orange Is the New Black" },
+        ],
+    ],
+    [
+        "tokyo ghoul",
+        [
+            { pattern: /^\s*ghoul\b[^\n]*(official\s+)?trailer/i, label: "Ghoul (different title)" },
+        ],
+    ],
+    [
+        "the promised neverland",
+        [
+            { pattern: /\bfinding\s+neverland\b/i, label: "Finding Neverland" },
+            { pattern: /\bpeter\s+pan(?:'s|s)?\s+neverland\b/i, label: "Peter Pan's Neverland" },
+            { pattern: /\bneverland\s+nightmare\b/i, label: "Neverland Nightmare" },
+        ],
+    ],
+    [
+        "assassination classroom",
+        [
+            { pattern: /\bclassroom\s+of\s+the\s+elite\b/i, label: "Classroom of the Elite" },
+        ],
+    ],
+    [
+        "chainsaw man",
+        [
+            { pattern: /\btexas\s+chainsaw\s+massacre\b/i, label: "The Texas Chainsaw Massacre" },
+        ],
+    ],
+    [
+        "spirited away",
+        [
+            // Apple TV's live-action musical "Spirited" is a different work.
+            // The negative lookahead is essential: legitimate titles beginning
+            // with "Spirited Away" must never be classified as this collision.
+            { pattern: /^\s*spirited\b(?!\s+away\b)[^\n]*(?:official\s+)?trailer/i, label: "Spirited (different title)" },
+        ],
+    ],
+    [
+        "my dress up darling",
+        [
+            { pattern: /\bdarling\s+in\s+the\s+franx{1,2}\b/i, label: "DARLING in the FRANXX" },
+        ],
+    ],
+    [
+        "made in abyss",
+        [
+            { pattern: /怪獣\s*[8８]\s*号|\bkaiju\s*(?:no\.?\s*)?8\b/i, label: "Kaiju No. 8" },
+        ],
+    ],
+    [
+        "samurai champloo",
+        [
+            { pattern: /\bblue\s+eye\s+samurai\b/i, label: "Blue Eye Samurai" },
+        ],
+    ],
+]);
+
+export function normaliseEntityText(value) {
+    return String(value || "")
+        .normalize("NFKC")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+}
+
+const entityTokens = (value) => normaliseEntityText(value).split(" ").filter(Boolean);
+const compactEntity = (value) => normaliseEntityText(value).replace(/\s+/g, "");
+
+function stripEntityQualifiers(rawTitle) {
+    return String(rawTitle || "")
+        // Providers frequently distinguish reboots/remakes with a year even though
+        // official YouTube titles omit it: "Hunter x Hunter (2011)" -> "Hunter x Hunter".
+        .replace(/\s*[\[(]\s*(?:19|20)\d{2}\s*[\])]\s*$/i, "")
+        .replace(/\s+(?:19|20)\d{2}\s*$/i, "")
+        // Likewise, a terminal format marker is catalogue metadata, not identity.
+        .replace(/\s*[\[(]\s*(?:tv|tv series|anime series)\s*[\])]\s*$/i, "")
+        .trim();
+}
+
+function derivedAliases(rawTitle) {
+    const raw = String(rawTitle || "").trim();
+    const values = [raw].filter(Boolean);
+
+    const withoutQualifier = stripEntityQualifiers(raw);
+    if (withoutQualifier && withoutQualifier !== raw) values.push(withoutQualifier);
+
+    // Subtitles after a colon are often omitted in official promotional titles:
+    // "Naruto: Shippuden" -> "Naruto", "Kaguya-sama: Love is War" -> "Kaguya-sama".
+    // Derive this from both the raw title and its qualifier-free version.
+    for (const source of [raw, withoutQualifier]) {
+        const colonPrefix = source.split(/[:：|｜]/, 1)[0]?.trim();
+        if (colonPrefix && normaliseEntityText(colonPrefix).length >= 4 && colonPrefix !== source) {
+            values.push(colonPrefix);
+        }
+    }
+
+    // Provider titles occasionally append a season/part marker. Removing only a
+    // terminal marker is conservative and keeps the actual series identity intact.
+    for (const source of [raw, withoutQualifier]) {
+        const withoutSeason = source.replace(/\s+(?:season|part)\s*\d+\s*$/i, "").trim();
+        if (withoutSeason && withoutSeason !== source) values.push(withoutSeason);
+    }
+
+    return values;
+}
+
+export function animeEntityAliases(anime) {
+    const rawTitles = [
+        anime?.title?.display,
+        anime?.title?.english,
+        anime?.title?.romaji,
+        anime?.title?.native,
+    ].filter(Boolean);
+
+    const candidates = [];
+    for (const title of rawTitles) candidates.push(...derivedAliases(title));
+
+    // Alias lookup uses every conservative derived title, not only the raw provider
+    // title. This makes "Hunter x Hunter (2011)" inherit the reviewed HxH aliases
+    // without maintaining duplicate map entries for every release-year qualifier.
+    const canonicalKeys = new Set(
+        rawTitles
+            .flatMap((title) => derivedAliases(title))
+            .map(normaliseEntityText)
+            .filter(Boolean)
+    );
+    for (const key of canonicalKeys) {
+        for (const alias of REVIEWED_TITLE_ALIASES.get(key) || []) candidates.push(alias);
+    }
+
+    const seen = new Set();
+    const aliases = [];
+    for (const raw of candidates) {
+        const normalized = normaliseEntityText(raw);
+        if (!normalized || seen.has(normalized)) continue;
+        seen.add(normalized);
+        const tokens = entityTokens(normalized);
+        const significant = tokens.filter((token) => !ENTITY_STOPWORDS.has(token));
+        aliases.push({
+            raw: String(raw),
+            normalized,
+            compact: compactEntity(normalized),
+            tokens,
+            significant,
+            requiredShort: significant.filter((token) => token.length <= 2 || /^\d+$/.test(token)),
+            reviewed: !rawTitles.some((title) => normaliseEntityText(title) === normalized),
+        });
+    }
+    return aliases;
+}
+
+function containsTokenSequence(haystack, needle) {
+    if (!needle.length || haystack.length < needle.length) return false;
+    outer: for (let i = 0; i <= haystack.length - needle.length; i += 1) {
+        for (let j = 0; j < needle.length; j += 1) {
+            if (haystack[i + j] !== needle[j]) continue outer;
+        }
+        return true;
+    }
+    return false;
+}
+
+function animeCollisionForText(text, anime) {
+    const canonicalKeys = [
+        anime?.title?.display,
+        anime?.title?.english,
+        anime?.title?.romaji,
+    ].map(normaliseEntityText).filter(Boolean);
+
+    for (const key of canonicalKeys) {
+        for (const rule of REVIEWED_ENTITY_COLLISIONS.get(key) || []) {
+            if (rule.pattern.test(String(text || ""))) {
+                return { key, label: rule.label, pattern: rule.pattern.source };
+            }
+        }
+    }
+    return null;
+}
+
+function oneEditOrAdjacentSwap(a, b) {
+    if (a === b) return true;
+    if (!a || !b || Math.abs(a.length - b.length) > 1) return false;
+
+    // Common human typo: adjacent transposition, e.g. Tokyo -> Toyko.
+    if (a.length === b.length) {
+        const diffs = [];
+        for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) diffs.push(i);
+        if (diffs.length === 1) return true;
+        if (diffs.length === 2) {
+            const [i, j] = diffs;
+            if (j === i + 1 && a[i] === b[j] && a[j] === b[i]) return true;
+        }
+    }
+
+    // One insertion/deletion/substitution. Restricted by the caller to longer
+    // identity tokens and multi-token titles, so this cannot make short generic
+    // words such as "one" or "no" fuzzy-match unrelated titles.
+    let i = 0;
+    let j = 0;
+    let edits = 0;
+    while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { i += 1; j += 1; continue; }
+        edits += 1;
+        if (edits > 1) return false;
+        if (a.length > b.length) i += 1;
+        else if (b.length > a.length) j += 1;
+        else { i += 1; j += 1; }
+    }
+    if (i < a.length || j < b.length) edits += 1;
+    return edits <= 1;
+}
+
+function fuzzyIdentityCoverage(candidateTokens, alias) {
+    if (alias.significant.length < 2) return { matched: [], fuzzy: [], coverage: 0 };
+    const used = new Set();
+    const matched = [];
+    const fuzzy = [];
+
+    for (const token of alias.significant) {
+        let index = candidateTokens.findIndex((candidate, idx) => !used.has(idx) && candidate === token);
+        let fuzzyHit = false;
+        if (index < 0 && token.length >= 4) {
+            index = candidateTokens.findIndex(
+                (candidate, idx) => !used.has(idx) && candidate.length >= 4 && oneEditOrAdjacentSwap(candidate, token)
+            );
+            fuzzyHit = index >= 0;
+        }
+        if (index >= 0) {
+            used.add(index);
+            matched.push(token);
+            if (fuzzyHit) fuzzy.push({ expected: token, actual: candidateTokens[index] });
+        }
+    }
+
+    return {
+        matched,
+        fuzzy,
+        coverage: alias.significant.length ? matched.length / alias.significant.length : 0,
+    };
+}
+
+/**
+ * Pure text matcher used by both ingestion and audits. `ok` means the text has
+ * strong enough identity evidence to attach it to this Anime document.
+ */
+export function matchAnimeEntityIdentityText(text, anime) {
+    const aliases = animeEntityAliases(anime);
+    if (!aliases.length) {
+        return { ok: true, status: "unknown", score: 0, reason: "anime has no usable title identity", aliases: [] };
+    }
+
+    const candidateTokens = entityTokens(text);
+    const candidateCompact = compactEntity(text);
+    let best = null;
+
+    for (const alias of aliases) {
+        const sequence = containsTokenSequence(candidateTokens, alias.tokens);
+        const compact = alias.compact.length >= 3 && candidateCompact.includes(alias.compact);
+        const candidateSet = new Set(candidateTokens);
+        const exactMatched = alias.significant.filter((token) => candidateSet.has(token));
+        const fuzzyEvidence = fuzzyIdentityCoverage(candidateTokens, alias);
+        const matched = fuzzyEvidence.matched.length > exactMatched.length ? fuzzyEvidence.matched : exactMatched;
+        const fuzzyMatches = fuzzyEvidence.matched.length > exactMatched.length ? fuzzyEvidence.fuzzy : [];
+        const missingRequired = alias.requiredShort.filter((token) => !candidateSet.has(token));
+        const coverage = alias.significant.length ? matched.length / alias.significant.length : 0;
+
+        let score = 0;
+        let matchType = "none";
+        if (sequence) {
+            score = alias.reviewed ? 98 : 100;
+            matchType = alias.reviewed ? "reviewed-alias" : "full-alias";
+        } else if (compact) {
+            score = alias.reviewed ? 96 : 97;
+            matchType = alias.reviewed ? "reviewed-alias-compact" : "compact-alias";
+        } else if (!missingRequired.length && alias.significant.length > 1 && exactMatched.length === alias.significant.length) {
+            score = 90;
+            matchType = "all-identity-tokens";
+        } else if (
+            !missingRequired.length &&
+            alias.significant.length > 1 &&
+            fuzzyMatches.length === 1 &&
+            matched.length === alias.significant.length
+        ) {
+            score = 88;
+            matchType = "one-token-typo";
+        } else if (!missingRequired.length && alias.significant.length === 1 && exactMatched.length === 1) {
+            score = 85;
+            matchType = "single-title-token";
+        } else if (matched.length) {
+            score = Math.round(coverage * 70);
+            matchType = "partial";
+        }
+
+        const candidate = {
+            ok: score >= 85,
+            status: score >= 85 ? "strong" : score > 0 ? "partial" : "none",
+            score,
+            matchType,
+            alias: alias.raw,
+            aliasNormalized: alias.normalized,
+            matchedTokens: matched,
+            fuzzyMatches,
+            missingRequired,
+            coverage: Number(coverage.toFixed(3)),
+        };
+        if (!best || candidate.score > best.score) best = candidate;
+    }
+
+    return best || { ok: false, status: "none", score: 0, matchType: "none", matchedTokens: [], coverage: 0 };
+}
+
+/**
+ * Complete entity gate. A reviewed collision is a high-confidence false link.
+ * A generic mismatch is rejected for new ingestion but remains review-only in
+ * repair tooling because some legacy series-owned uploads omit the anime name.
+ */
+export function assessAnimeEntityRelevance(video, anime, { allowOwnChannel = true } = {}) {
+    if (!anime?.title) {
+        return { ok: true, status: "unknown", score: 0, reason: "no linked anime identity available" };
+    }
+
+    const title = String(video?.title || "");
+    const channelTitle = String(video?.channelTitle || "");
+    const collision = animeCollisionForText(title, anime);
+    const target = anime?.title?.display || anime?.title?.english || anime?.title?.romaji || anime?.title?.native || "linked anime";
+
+    if (collision) {
+        return {
+            ok: false,
+            status: "collision",
+            score: 0,
+            safeToQuarantine: true,
+            reason: `anime entity collision: ${collision.label} conflicts with ${target}`,
+            collision,
+        };
+    }
+
+    if (allowOwnChannel && isAnimeOwnChannel(channelTitle, anime)) {
+        return {
+            ok: true,
+            status: "strong",
+            score: 100,
+            matchType: "series-own-channel",
+            matchedAlias: target,
+            reason: "series own official channel",
+        };
+    }
+
+    const titleMatch = matchAnimeEntityIdentityText(title, anime);
+    if (titleMatch.ok) {
+        return {
+            ...titleMatch,
+            matchedAlias: titleMatch.alias,
+            reason: `strong anime identity match (${titleMatch.alias})`,
+        };
+    }
+
+    // Description evidence helps a human review a legacy row but intentionally
+    // does not override the title requirement for new ingestion.
+    const descriptionMatch = matchAnimeEntityIdentityText(String(video?.description || ""), anime);
+    return {
+        ok: false,
+        status: titleMatch.status === "partial" || descriptionMatch.ok ? "review" : "mismatch",
+        score: titleMatch.score,
+        safeToQuarantine: false,
+        matchType: titleMatch.matchType,
+        matchedAlias: titleMatch.alias || null,
+        matchedTokens: titleMatch.matchedTokens || [],
+        coverage: titleMatch.coverage || 0,
+        descriptionSupportsAnime: Boolean(descriptionMatch.ok),
+        reason: `anime entity mismatch: video title does not strongly identify ${target}`,
+    };
+}
+
 /** Promotional phrasing, including the Japanese equivalents used by JP channels. */
 const PROMO_KEYWORD_RE = /\b(trailer|teaser|opening|ending|pv|preview|promo|op\s?\d|ed\s?\d)\b/i;
 const PROMO_KEYWORD_JP_RE = /PV|予告|本編|特報|公開/;
 const OFFICIAL_PROMO_RE = /official\s+(\w+\s+){0,2}(trailer|teaser|clip|opening|ending|pv|promo)/i;
 
 const hasPromoKeyword = (title) => PROMO_KEYWORD_RE.test(title) || PROMO_KEYWORD_JP_RE.test(title);
+
+/**
+ * Coarse content type used only for catalogue diversity. It does not decide
+ * whether a video is good enough to import; assessQuality owns that decision.
+ */
+export function classifyVideoKind(title) {
+    const raw = String(title || "");
+    const value = raw.toLowerCase();
+    if (/\btrailer\b/.test(value)) return "trailer";
+    if (/\bteaser\b/.test(value)) return "teaser";
+    if (/\b(opening|op\s?\d*)\b/.test(value)) return "opening";
+    if (/\b(ending|ed\s?\d*)\b/.test(value)) return "ending";
+    if (/\b(clip|scene|preview)\b/.test(value)) return "clip";
+    if (/\b(pv|promo|promotional)\b/.test(value) || /\bPV\b/.test(raw)) return "promo";
+    if (/\b(theme|music|song|ost)\b/.test(value)) return "music";
+    return "other";
+}
+
+/**
+ * Selects the highest-ranked candidates while preventing one content type from
+ * crowding out everything else. The diversity cap is soft for exceptionally
+ * strong trusted results (score >= 8), so a series with only official trailers
+ * can still fill a small gap without admitting lower-confidence reposts merely
+ * to hit a number.
+ */
+export function selectDiverseCandidates(entries, slots, { maxKindShare = 0.6 } = {}) {
+    const requested = Math.max(0, Number(slots) || 0);
+    if (!requested) return { selected: [], deferred: [...(entries || [])] };
+
+    const maxPerKind = requested <= 2
+        ? requested
+        : Math.max(2, Math.ceil(requested * Math.min(Math.max(Number(maxKindShare) || 0.6, 0.4), 0.8)));
+    const selected = [];
+    const deferred = [];
+    const kindCounts = new Map();
+
+    for (const entry of entries || []) {
+        if (selected.length >= requested) {
+            deferred.push(entry);
+            continue;
+        }
+        const kind = entry.kind || classifyVideoKind(entry?.video?.title);
+        const count = kindCounts.get(kind) || 0;
+        if (count >= maxPerKind) {
+            deferred.push({ ...entry, kind, diversityDeferred: true });
+            continue;
+        }
+        selected.push({ ...entry, kind });
+        kindCounts.set(kind, count + 1);
+    }
+
+    // Fill any remaining slots only with very strong trusted candidates. This is
+    // a quality-over-count rule: weaker same-kind candidates stay deferred.
+    if (selected.length < requested) {
+        const stillDeferred = [];
+        for (const entry of deferred) {
+            if (
+                selected.length < requested &&
+                entry?.verdict?.trustedChannel &&
+                Number(entry?.verdict?.score) >= 8
+            ) {
+                selected.push(entry);
+            } else {
+                stillDeferred.push(entry);
+            }
+        }
+        return { selected, deferred: stillDeferred };
+    }
+
+    return { selected, deferred };
+}
 
 /** Duration bounds. Trusted channels get a wider window — see assessQuality. */
 export const DURATION_MIN_SECONDS = 10;
@@ -611,13 +1129,27 @@ export function assessQuality(video, { anime, minScore = MIN_QUALITY_SCORE } = {
         return { ok: false, reason: `live-action adaptation, not the anime (${hit.source})`, score: 0, trustedChannel };
 
     /**
-     * Relevance: the anime must actually be named in the title — unless the video
-     * is on the series' own official channel, where "Opening Theme | We Are!" is
-     * unambiguous without repeating the show's name.
+     * Entity relevance: a legitimate uploader is not automatically relevant to
+     * the Anime document being ingested. This is the guard that prevents a query
+     * for D.Gray-man from attaching Netflix's The Gray Man to D.Gray-man.
+     *
+     * Series-owned official channels remain the only safe exception when the
+     * individual video title omits the series name.
      */
-    const { matched, supporting, hasVocabulary } = matchAnimeTokens(title, anime);
-    if (hasVocabulary && !matched.length && !ownChannel)
-        return { ok: false, reason: "anime title absent from video title (off-topic)", score: 0, trustedChannel };
+    const entityRelevance = assessAnimeEntityRelevance(
+        { title, description, channelTitle: channel },
+        anime,
+        { allowOwnChannel: true }
+    );
+    if (!entityRelevance.ok) {
+        return {
+            ok: false,
+            reason: entityRelevance.reason,
+            score: 0,
+            trustedChannel,
+            entityRelevance,
+        };
+    }
 
     /**
      * Duration sanity. The upper bound widens for trusted channels because the
@@ -668,7 +1200,7 @@ export function assessQuality(video, { anime, minScore = MIN_QUALITY_SCORE } = {
         signals.push(ownChannel ? "+5 series' own official channel" : "+5 trusted channel");
     }
     // 【公式】 is the standard Japanese "official channel" marker.
-    if (OFFICIAL_MARKER_RE.test(channel) && (matched.length || ownChannel)) {
+    if (OFFICIAL_MARKER_RE.test(channel) && entityRelevance.status === "strong") {
         score += 2;
         signals.push("+2 official channel");
     }
@@ -679,13 +1211,12 @@ export function assessQuality(video, { anime, minScore = MIN_QUALITY_SCORE } = {
         score += 2;
         signals.push("+2 promo keyword");
     }
-    if (matched.length) {
+    if (entityRelevance.matchType === "series-own-channel") {
         score += 2;
-        signals.push(`+2 title match (${matched.join("/")}${supporting.length ? ` +${supporting.join("/")}` : ""})`);
-    } else if (ownChannel) {
-        // Relevance is established by the channel instead of the title.
+        signals.push("+2 series' own channel (entity match)");
+    } else if (entityRelevance.status === "strong") {
         score += 2;
-        signals.push("+2 series' own channel (relevance by channel)");
+        signals.push(`+2 anime entity match (${entityRelevance.matchedAlias || "title"})`);
     }
     if (video.duration >= 15 && video.duration <= 300) {
         score += 1;
@@ -929,7 +1460,7 @@ export function computeSlots({ perAnime, existingCount, totalCap = false, ceilin
  * Resolves which anime to ingest for. Never calls AniList — Phase 2 owns that, and
  * this reads the existing collection only.
  */
-export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0, metadataSource } = {}) {
+export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0, metadataSource, qualityFirst = false } = {}) {
     if (animeId) {
         if (!mongoose.isValidObjectId(animeId)) {
             throw new Error(`"${animeId}" is not a valid Mongo ObjectId`);
@@ -958,6 +1489,35 @@ export async function resolveTargetAnime({ animeName, animeId, limit, offset = 0
     // adds new fallback documents, catalogue growth can target those new rows
     // directly instead of spending a 40-anime batch on already-full AniList rows.
     const filter = metadataSource ? { metadataSource: String(metadataSource) } : {};
+
+    if (qualityFirst) {
+        /**
+         * Spend scarce search quota on coverage gaps first rather than repeatedly
+         * touching already-rich anime. Counts are read once, then the small Anime
+         * reference catalogue is sorted in memory by:
+         *   1) fewest published YouTube videos
+         *   2) highest popularity
+         *   3) stable ObjectId tie-break
+         *
+         * Re-run quality-first batches from offset 0 after each successful batch:
+         * the newly topped-up anime naturally fall behind the remaining gaps.
+         */
+        const [animeDocs, countsByAnime] = await Promise.all([
+            Anime.find(filter).sort({ popularity: -1, _id: 1 }),
+            loadYouTubeCountsByAnime(),
+        ]);
+        animeDocs.sort((a, b) => {
+            const aCount = countsByAnime.get(String(a._id)) || 0;
+            const bCount = countsByAnime.get(String(b._id)) || 0;
+            if (aCount !== bCount) return aCount - bCount;
+            const popularityDiff = (Number(b.popularity) || 0) - (Number(a.popularity) || 0);
+            if (popularityDiff !== 0) return popularityDiff;
+            return String(a._id).localeCompare(String(b._id));
+        });
+        const start = Math.max(0, Number(offset) || 0);
+        return animeDocs.slice(start, start + (Number(limit) || 10));
+    }
+
     return Anime.find(filter)
         .sort({ popularity: -1, _id: 1 })
         .skip(Math.max(0, Number(offset) || 0))
@@ -1136,7 +1696,12 @@ export async function ingestYouTubeForAnime({
                 onEvent({ type: "filtered", videoId: video.videoId, title: video.title, reason: verdict.reason });
                 continue;
             }
-            ranked.push({ video, verdict, fingerprint: titleFingerprint(video.title) });
+            ranked.push({
+                video,
+                verdict,
+                fingerprint: titleFingerprint(video.title),
+                kind: classifyVideoKind(video.title),
+            });
         }
 
         /**
@@ -1174,12 +1739,16 @@ export async function ingestYouTubeForAnime({
             deduped.push(entry);
         }
 
-        const selected = deduped.slice(0, slots);
+        const { selected, deferred } = selectDiverseCandidates(deduped, slots);
 
-        // Candidates that passed every filter but lost the ranking cut. Counted as
-        // filtered, not accepted, so the totals stay honest.
-        for (const { video, verdict } of deduped.slice(slots)) {
-            const reason = `ranked below top ${slots} for this anime (score ${verdict.score})`;
+        // Candidates that passed every filter but lost either the quality ranking
+        // cut or the soft content-mix cap. Counted as filtered, not accepted, so
+        // totals remain honest and a growth run never pretends it imported more
+        // variety than it actually did.
+        for (const { video, verdict, diversityDeferred } of deferred) {
+            const reason = diversityDeferred
+                ? `content mix cap for this batch (${classifyVideoKind(video.title)})`
+                : `ranked below top ${slots} for this anime (score ${verdict.score})`;
             report.rejected += 1;
             report.rejections.push({ videoId: video.videoId, title: video.title, reason });
             onEvent({ type: "filtered", videoId: video.videoId, title: video.title, reason });

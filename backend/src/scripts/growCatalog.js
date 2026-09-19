@@ -17,6 +17,7 @@
  *   npm run grow:catalog -- --metadata-provider=curated --offset=0
  *   npm run grow:catalog -- --metadata-provider=stored --offset=0
  *   npm run grow:catalog -- --dry-run --offset=0
+ *   npm run grow:catalog -- --quality-first --metadata-provider=stored
  *
  * Backward compatibility:
  *   --skip-anilist behaves like --metadata-provider=stored.
@@ -132,9 +133,7 @@ async function printStats(targetVideos) {
         console.log(`Embedded videos       : ${embeddedVideos}/${published}`);
         console.log(`Embedded anime        : ${embeddedAnime}/${anime}`);
         console.log(
-            `1k target             : ${
-                published >= targetVideos ? "REACHED ✓" : `${targetVideos - published} remaining`
-            }`
+            `Reference count       : ${published}/${targetVideos} (quality gates stay authoritative)`
         );
         console.log("============================================================");
 
@@ -250,7 +249,12 @@ async function main() {
     const animeTarget = clamp(args["anime-target"], 160, 50, 300);
     const targetVideos = clamp(args["video-target"], 1000, 100, 5000);
     const batch = clamp(args.batch, 40, 1, 45);
-    const offset = clamp(args.offset, 0, 0, 5000);
+    const qualityFirst = Boolean(args["quality-first"]);
+    const requestedOffset = clamp(args.offset, 0, 0, 5000);
+    // Coverage order changes after every successful top-up. Starting each
+    // quality-first run from zero is therefore intentional: newly filled anime
+    // fall behind the remaining gaps automatically.
+    const offset = qualityFirst ? 0 : requestedOffset;
     const queries = clamp(args.queries, 2, 1, 2);
     const queryOffset = clamp(args["query-offset"], 0, 0, 4);
     const perAnime = clamp(args["per-anime"], 15, 1, 15);
@@ -260,10 +264,13 @@ async function main() {
     console.log("AnimeVerse safe catalogue growth");
     console.log(`Anime metadata target : top ${animeTarget} by popularity`);
     console.log(`Metadata strategy     : ${metadataProvider === "auto" ? "AniList → Jikan → curated offline → stored" : metadataProvider}`);
-    console.log(`YouTube batch         : offset ${offset}, ${batch} anime`);
+    console.log(`YouTube batch         : ${qualityFirst ? "quality-first coverage order" : `offset ${offset}`}, ${batch} anime`);
+    if (qualityFirst && requestedOffset) {
+        console.log(`Requested offset      : ${requestedOffset} ignored in quality-first mode`);
+    }
     console.log(`Target per anime      : ${perAnime}`);
     console.log(`Search templates      : ${queries}, starting at ${queryOffset + 1}`);
-    console.log(`Published-video goal  : ${targetVideos}+`);
+    console.log(`Reference video count : ${targetVideos} (not a quality target)`);
     if (dryRun) console.log("Mode                  : DRY RUN for YouTube writes");
 
     const metadata = await refreshMetadata({
@@ -339,6 +346,7 @@ async function main() {
         "--total-cap",
     ];
     if (youtubeMetadataSource) ytArgs.push(`--metadata-source=${youtubeMetadataSource}`);
+    if (qualityFirst) ytArgs.push("--quality-first");
     if (dryRun) ytArgs.push("--dry-run");
 
     // YouTube quota exhaustion may produce a non-zero exit after valid videos were
@@ -367,11 +375,26 @@ async function main() {
 
     const stats = await printStats(targetVideos);
 
+    // Count is deliberately not the finish line. Recalculate coverage, duplicate,
+    // embedding and content-mix health after every real growth run so the operator
+    // sees whether the catalogue improved rather than only whether it got larger.
+    const qualityResult = runNodeScript("auditCatalogQuality.js", ["--summary-only", "--no-json"]);
+    if (!qualityResult.ok) {
+        console.warn("\n⚠ Offline catalogue quality audit did not complete; growth results are still preserved.");
+    }
+
     if (stats.published < targetVideos) {
         const nextOffset = offset + effectiveBatch;
         console.log("\nNext safe growth suggestion:");
 
-        if (nextOffset < eligibleAnimeCount) {
+        if (qualityFirst) {
+            console.log(
+                "  Re-run the same --quality-first command after quota resets; coverage gaps are recalculated each time."
+            );
+            console.log(
+                "  When the quality audit shows healthy coverage, use --query-offset=2 only if you want more content variety."
+            );
+        } else if (nextOffset < eligibleAnimeCount) {
             console.log(`  npm run grow:catalog -- --offset=${nextOffset}`);
         } else {
             console.log(

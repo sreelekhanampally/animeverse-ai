@@ -1,3 +1,5 @@
+import { CircuitBreaker, CircuitOpenError } from "../utils/circuitBreaker.js";
+
 const DEFAULT_GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_GEMINI_MODEL = "gemini-3.7-flash";
 const DEFAULT_GEMINI_FALLBACK_MODELS = ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"];
@@ -156,6 +158,24 @@ const mapGeminiHttpError = (status, payload) => {
             { code: "GEMINI_AUTH_FAILED" }
         );
     }
+    if (status === 400) {
+        return new GeminiChatError(
+            `Gemini rejected the request${detail ? `: ${detail}` : ""}.`,
+            { code: "GEMINI_BAD_REQUEST", statusCode: 502 }
+        );
+    }
+    if (status === 404) {
+        return new GeminiChatError(
+            `Gemini model is unavailable${detail ? `: ${detail}` : ""}.`,
+            { code: "GEMINI_MODEL_UNAVAILABLE" }
+        );
+    }
+    if (status >= 500) {
+        return new GeminiChatError(
+            `Gemini upstream service failed${detail ? `: ${detail}` : ` with HTTP ${status}`}.`,
+            { code: "GEMINI_UPSTREAM_ERROR" }
+        );
+    }
     return new GeminiChatError(
         `Gemini request failed${detail ? `: ${detail}` : ` with HTTP ${status}`}.`,
         { code: "GEMINI_REQUEST_FAILED" }
@@ -169,6 +189,8 @@ const isFailoverEligible = (error) =>
         "GEMINI_TIMEOUT",
         "GEMINI_UNREACHABLE",
         "GEMINI_REQUEST_FAILED",
+        "GEMINI_MODEL_UNAVAILABLE",
+        "GEMINI_UPSTREAM_ERROR",
         "GEMINI_EMPTY_RESPONSE",
     ].includes(error.code);
 
@@ -247,7 +269,7 @@ async function postGemini(body, { fetchImpl = fetch, preferredModel = "" } = {})
  * imported here. That keeps the provider unaware of MongoDB and makes the HTTP
  * protocol easy to unit-test without a database or a real Gemini key.
  */
-export async function generateGeminiChat({ messages, executeTool, fetchImpl = fetch, allowTools = true }) {
+async function generateGeminiChatCore({ messages, executeTool, fetchImpl = fetch, allowTools = true }) {
     const contents = toGeminiContents(messages);
     const toolEvents = [];
     let activeModel = "";
@@ -327,6 +349,29 @@ export async function generateGeminiChat({ messages, executeTool, fetchImpl = fe
     });
 }
 
+const geminiCircuit = new CircuitBreaker({
+    name: "gemini",
+    failureThreshold: Number(process.env.GEMINI_CIRCUIT_FAILURE_THRESHOLD) || 3,
+    cooldownMs: Number(process.env.GEMINI_CIRCUIT_COOLDOWN_MS) || 30_000,
+    isFailure: isFailoverEligible,
+});
+
+export async function generateGeminiChat(args) {
+    try {
+        return await geminiCircuit.execute(() => generateGeminiChatCore(args));
+    } catch (error) {
+        if (error instanceof CircuitOpenError) {
+            const unavailable = new GeminiChatError(
+                "Gemini is temporarily paused after repeated provider failures. AnimeVerse will use its fallback path while the circuit cools down.",
+                { code: "GEMINI_CIRCUIT_OPEN" }
+            );
+            unavailable.retryAfterMs = error.retryAfterMs;
+            throw unavailable;
+        }
+        throw error;
+    }
+}
+
 export const geminiDiagnostics = () => {
     const config = geminiConfig();
     return {
@@ -335,7 +380,10 @@ export const geminiDiagnostics = () => {
         fallbackModels: config.fallbackModels,
         api: "Gemini GenerateContent",
         paidApiRequired: false,
+        circuit: geminiCircuit.snapshot(),
     };
 };
+
+export const resetGeminiCircuitForTests = () => geminiCircuit.reset();
 
 export const geminiSystemInstruction = SYSTEM_INSTRUCTION;

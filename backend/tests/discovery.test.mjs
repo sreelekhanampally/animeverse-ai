@@ -45,7 +45,7 @@ test("semantic similarity remains the dominant signal", () => {
 test("similarity explanation exposes human-readable reasons without pretending scene knowledge", () => {
     const reasons = explainSimilarityMatch(sourceVideo, candidateVideo, 0.61);
     assert.ok(reasons.some((reason) => /Shared genre/i.test(reason)));
-    assert.ok(reasons.some((reason) => /semantic/i.test(reason)));
+    assert.ok(reasons.some((reason) => /similar theme|related theme|close overall match/i.test(reason)));
     assert.ok(reasons.every((reason) => !/scene|timestamp|watched/i.test(reason)));
 });
 
@@ -80,8 +80,8 @@ test("recommendations combine history, likes and watch-later signals", async () 
     assert.match(source, /watchHistory watchLater/);
     assert.match(source, /Like\.find/);
     assert.match(source, /Similar to videos you liked/);
-    assert.match(source, /Matches videos you saved for later/);
-    assert.match(source, /Close to your recent watch history/);
+    assert.match(source, /Similar to videos you saved/);
+    assert.match(source, /Similar to videos you watched/);
 });
 
 test("frontend wires Discovery Lab, similarity map and explainable cards", async () => {
@@ -94,7 +94,7 @@ test("frontend wires Discovery Lab, similarity map and explainable cards", async
     assert.match(routes, /DiscoveryPage/);
     assert.match(sidebar, /Discovery Lab/);
     assert.match(watchPage, /More like this/);
-    assert.match(watchPage, /Semantic similarity map/);
-    assert.match(discoveryPage, /Why it belongs/);
-    assert.match(discoveryPage, /Semantic map around the top match/);
+    assert.match(watchPage, /Related video map/);
+    assert.match(discoveryPage, /Why this\?/);
+    assert.match(discoveryPage, /Explore related videos/);
 });

@@ -1,6 +1,7 @@
 import { Anime } from "../models/anime.model.js";
 import { Video } from "../models/video.model.js";
 import { semanticVideoSearch } from "./semanticSearch.service.js";
+import { logger } from "../utils/logger.js";
 import {
     generateGeminiChat,
     geminiDiagnostics,
@@ -383,7 +384,7 @@ export async function answerAnimeChat(messages) {
             // Keep the exact provider failure visible in backend logs without ever
             // printing the API key. This makes free-tier throttling/model outages
             // diagnosable instead of silently looking like a bad chatbot response.
-            console.warn(`[AnimeVerse Gemini] ${error.code}: ${error.message}`);
+            logger.warn("gemini_fallback", { code: error.code, message: error.message, retryAfterMs: error.retryAfterMs || null });
             // Gemini free-tier quota/network failures should not make the interview
             // demo go dark. auto/gemini both continue to a free local fallback.
         }

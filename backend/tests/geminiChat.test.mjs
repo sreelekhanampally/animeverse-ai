@@ -235,8 +235,8 @@ test("the chat UI no longer claims every answer is constrained to retrieved meta
         new URL("../../frontend/src/pages/AiChatPage.jsx", import.meta.url),
         "utf8"
     );
-    assert.match(source, /General anime conversation/);
-    assert.match(source, /AnimeVerse catalog tools/);
+    assert.match(source, /Ask about anime/);
+    assert.match(source, /Search AnimeVerse/);
     assert.doesNotMatch(source, /Answers are constrained to AnimeVerse metadata/);
 });
 
