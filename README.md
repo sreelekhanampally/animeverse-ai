@@ -572,9 +572,7 @@ This project is licensed under the **MIT License**.
 
 **Sreelekha Nampally**
 
-Full-Stack Developer and aspiring AI/ML Engineer with a focus on machine learning, backend systems, and AI-powered applications.
-
-This project was built to demonstrate end-to-end ML engineering, from time-series data preparation and leakage-safe feature engineering to model evaluation, explainability, API integration, testing, and containerized deployment.
+Full-Stack Developer and aspiring AI/ML Engineer.
 
 * GitHub: [@sreelekhanampally](https://github.com/sreelekhanampally)
 * LinkedIn: [sreelekha-nampally](https://www.linkedin.com/in/sreelekha-nampally)
