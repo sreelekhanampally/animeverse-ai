@@ -405,7 +405,7 @@ The goal is to measure retrieval behavior, latency, provider health and fallback
 ### 1. Clone
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/sreelekhanampally
 cd animeverse-ai
 ```
 
