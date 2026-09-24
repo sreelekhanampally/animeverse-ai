@@ -2,6 +2,7 @@ import { Anime } from "../models/anime.model.js";
 import { Video } from "../models/video.model.js";
 import { semanticVideoSearch } from "./semanticSearch.service.js";
 import { retrieveRagContext } from "./ragRetrieval.service.js";
+import { renumberKnowledgeResult } from "../utils/ragCitationIds.js";
 import { logger } from "../utils/logger.js";
 import {
     generateGeminiChat,
@@ -399,9 +400,16 @@ export async function answerAnimeChat(messages) {
 
     if ((mode === "auto" || mode === "gemini") && hasGeminiKey()) {
         try {
+            let citationOffset = 0;
             const generated = await generateGeminiChat({
                 messages: normalized,
-                executeTool: executeAnimeVerseTool,
+                executeTool: async (name, args) => {
+                    const result = await executeAnimeVerseTool(name, args);
+                    if (name !== "search_animeverse_knowledge") return result;
+                    const numbered = renumberKnowledgeResult(result, citationOffset);
+                    citationOffset = numbered.nextOffset;
+                    return numbered.result;
+                },
                 // Greetings/thanks are guaranteed to stay conversational: no
                 // catalogue tool is even exposed on those turns.
                 allowTools: likelyNeedsCatalog(latestQuestion),
