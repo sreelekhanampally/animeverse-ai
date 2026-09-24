@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { verifyJWT, optionalJWT } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
+import ragRouter from "./rag.routes.js";
 import {
     getVideoSummary,
     askAboutVideo,
@@ -47,6 +48,7 @@ const evaluationRunLimiter = rateLimit({
 });
 
 // Public / optional-auth
+router.use("/rag", ragRouter);
 router.get("/health", aiHealth);
 router.get("/search", semanticSearchLimiter, semanticSearch);
 router.post("/semantic-search", semanticSearchLimiter, semanticSearchPost);
