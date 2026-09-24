@@ -205,7 +205,7 @@ export async function retrieveRagContext(
             lexicalCandidates: lexical.length,
             fusedCandidates: fused.length,
             abstained: selected.length > 0 && !evidenceFound,
-            evidencePolicy: "lexical-anchor-in-selected-context",
+            evidencePolicy: "whole-token-coverage-and-semantic-agreement",
             returned: sources.length,
             filtersApplied: Object.keys(filter).filter((key) => key !== "indexVersion"),
         },
