@@ -1,18 +1,40 @@
 import { normalizeSearchText, tokenizeSearchText } from "./semanticRanking.js";
 
 export const RRF_K = 60;
+export const RAG_MIN_LEXICAL_COVERAGE = 0.3;
+export const RAG_MIN_SEMANTIC_SIMILARITY = 0.18;
 
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0));
+const QUESTION_WORDS = new Set([
+    "about", "by", "can", "could", "did", "do", "does", "her", "his", "how",
+    "its", "me", "my", "our", "please", "should", "their", "them", "these",
+    "those", "what", "when", "where", "which", "who", "why", "would", "you", "your",
+]);
+// A few close descriptions of the same plot detail occur in catalogue synopses.
+// Keep these explicit so unrelated vector neighbours cannot pass the evidence
+// gate through a broad fuzzy or substring match.
+const RELATED_TERMS = [
+    ["notebook", "notepad"],
+    ["kill", "killing", "death"],
+    ["write", "writes", "writing", "written", "pen"],
+];
+const relatedTerms = new Map(
+    RELATED_TERMS.flatMap((group) => group.map((term) => [term, group]))
+);
+
+const matchesTerm = (token, haystackTokens) =>
+    haystackTokens.has(token) ||
+    (relatedTerms.get(token)?.some((related) => haystackTokens.has(related)) ?? false);
 
 export const lexicalCoverageScore = (query, chunk) => {
-    const queryTokens = [...new Set(tokenizeSearchText(query))];
+    const queryTokens = [...new Set(tokenizeSearchText(query).filter((token) => !QUESTION_WORDS.has(token)))];
     if (!queryTokens.length) return 0;
 
     const title = normalizeSearchText(chunk?.title);
     const content = normalizeSearchText(chunk?.content);
-    const haystack = `${title} ${content}`;
+    const haystackTokens = new Set(tokenizeSearchText(`${title} ${content}`));
 
-    const matched = queryTokens.filter((token) => haystack.includes(token)).length;
+    const matched = queryTokens.filter((token) => matchesTerm(token, haystackTokens)).length;
     let score = matched / queryTokens.length;
 
     const normalizedQuery = normalizeSearchText(query);
@@ -96,5 +118,15 @@ export function rerankRagResults(query, fused = []) {
             return String(a.chunk?._id || "").localeCompare(String(b.chunk?._id || ""));
         });
 }
+
+// A vector neighbour alone is not evidence for a factual answer. Require one
+// selected chunk to agree on both whole query words and semantic similarity.
+// The thresholds are conservative for factual RAG and should be checked against
+// the evaluation corpus when the indexed catalogue changes.
+export const hasRagEvidence = (selected = []) =>
+    selected.some((entry) =>
+        Number(entry.lexicalScore) >= RAG_MIN_LEXICAL_COVERAGE &&
+        Number(entry.semanticScore) >= RAG_MIN_SEMANTIC_SIMILARITY
+    );
 
 export const ragRankingInternals = { clamp01 };

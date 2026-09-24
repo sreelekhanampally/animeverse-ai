@@ -25,7 +25,7 @@
     "catalog:associations:apply": "node src/scripts/auditCatalogAssociations.js --apply",
     "rag:index": "node src/scripts/buildRagIndex.js",
     "rag:index:dry": "node src/scripts/buildRagIndex.js --dry-run",
-    "test:rag": "node --test tests/ragFoundation.test.mjs tests/ragEvaluation.test.mjs tests/ragCitationIds.test.mjs",
+    "test:rag": "node --test tests/ragFoundation.test.mjs tests/ragEvaluation.test.mjs tests/ragCitationIds.test.mjs tests/ragEvidenceGate.test.mjs",
     "rag:evaluate": "node src/scripts/evaluateRag.js"
   },
   "keywords": [
