@@ -32,3 +32,16 @@ test("weak topic overlap and low semantic similarity each cause abstention", () 
     assert.equal(hasRagEvidence([{ lexicalScore: 0.667, semanticScore: 0.099 }]), false);
     assert.equal(hasRagEvidence([{ lexicalScore: 0.375, semanticScore: 0.239 }]), true);
 });
+
+test("a grounded synopsis can match a close paraphrase without substring matches", () => {
+    const score = lexicalCoverageScore("a notebook lets its owner kill by writing names", {
+        title: "Death Note synopsis",
+        content: "A shinigami drops a notepad called a Death Note. Light receives power over life and death with the stroke of a pen.",
+    });
+    assert.equal(score, 0.5);
+    assert.equal(hasRagEvidence([{ lexicalScore: score, semanticScore: 0.282 }]), true);
+    assert.equal(lexicalCoverageScore("current weather forecast for Pune tomorrow", {
+        title: "Weathering With You",
+        content: "A supernatural anime film",
+    }), 0);
+});

@@ -10,6 +10,21 @@ const QUESTION_WORDS = new Set([
     "its", "me", "my", "our", "please", "should", "their", "them", "these",
     "those", "what", "when", "where", "which", "who", "why", "would", "you", "your",
 ]);
+// A few close descriptions of the same plot detail occur in catalogue synopses.
+// Keep these explicit so unrelated vector neighbours cannot pass the evidence
+// gate through a broad fuzzy or substring match.
+const RELATED_TERMS = [
+    ["notebook", "notepad"],
+    ["kill", "killing", "death"],
+    ["write", "writes", "writing", "written", "pen"],
+];
+const relatedTerms = new Map(
+    RELATED_TERMS.flatMap((group) => group.map((term) => [term, group]))
+);
+
+const matchesTerm = (token, haystackTokens) =>
+    haystackTokens.has(token) ||
+    (relatedTerms.get(token)?.some((related) => haystackTokens.has(related)) ?? false);
 
 export const lexicalCoverageScore = (query, chunk) => {
     const queryTokens = [...new Set(tokenizeSearchText(query).filter((token) => !QUESTION_WORDS.has(token)))];
@@ -19,7 +34,7 @@ export const lexicalCoverageScore = (query, chunk) => {
     const content = normalizeSearchText(chunk?.content);
     const haystackTokens = new Set(tokenizeSearchText(`${title} ${content}`));
 
-    const matched = queryTokens.filter((token) => haystackTokens.has(token)).length;
+    const matched = queryTokens.filter((token) => matchesTerm(token, haystackTokens)).length;
     let score = matched / queryTokens.length;
 
     const normalizedQuery = normalizeSearchText(query);
