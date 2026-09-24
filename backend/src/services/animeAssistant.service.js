@@ -1,8 +1,6 @@
 import { Anime } from "../models/anime.model.js";
 import { Video } from "../models/video.model.js";
 import { semanticVideoSearch } from "./semanticSearch.service.js";
-import { retrieveRagContext } from "./ragRetrieval.service.js";
-import { renumberKnowledgeResult } from "../utils/ragCitationIds.js";
 import { logger } from "../utils/logger.js";
 import {
     generateGeminiChat,
@@ -185,23 +183,6 @@ async function searchAnimeVerseCatalog(args = {}) {
     };
 }
 
-async function searchAnimeVerseKnowledge(args = {}) {
-    const query = clean(args.query, 500);
-    if (query.length < 2) return { error: "Knowledge query must contain at least 2 characters." };
-
-    const limit = Math.min(10, Math.max(1, Number(args.limit) || 6));
-    const result = await retrieveRagContext(query, { limit });
-
-    return {
-        query: result.query,
-        context: result.context,
-        knowledgeSources: result.sources,
-        diagnostics: result.diagnostics,
-        note:
-            "Answer AnimeVerse-specific factual questions from this retrieved context. Cite the supplied AV source ids. If the context is insufficient, say so instead of filling gaps from model memory.",
-    };
-}
-
 async function getAnimeVerseStats() {
     const [animeCount, publishedVideos, youtubeVideos, cloudinaryVideos, creatorIds] = await Promise.all([
         Anime.countDocuments({}),
@@ -225,7 +206,6 @@ async function getAnimeVerseStats() {
 
 async function executeAnimeVerseTool(name, args) {
     if (name === "search_animeverse_catalog") return searchAnimeVerseCatalog(args);
-    if (name === "search_animeverse_knowledge") return searchAnimeVerseKnowledge(args);
     if (name === "get_animeverse_stats") return getAnimeVerseStats();
     return { error: `Unknown AnimeVerse tool: ${name}` };
 }
@@ -242,25 +222,6 @@ const collectToolSources = (events = []) => {
             seen.add(id);
             sources.push(source);
             if (sources.length >= MAX_CONTEXT_RESULTS) return sources;
-        }
-    }
-    return sources;
-};
-
-const collectKnowledgeSources = (events = []) => {
-    const seen = new Set();
-    const sources = [];
-
-    for (const event of events) {
-        const rows = Array.isArray(event?.result?.knowledgeSources)
-            ? event.result.knowledgeSources
-            : [];
-        for (const source of rows) {
-            const id = String(source?.citationId || "");
-            if (!id || seen.has(id)) continue;
-            seen.add(id);
-            sources.push(source);
-            if (sources.length >= 10) return sources;
         }
     }
     return sources;
@@ -400,27 +361,18 @@ export async function answerAnimeChat(messages) {
 
     if ((mode === "auto" || mode === "gemini") && hasGeminiKey()) {
         try {
-            let citationOffset = 0;
             const generated = await generateGeminiChat({
                 messages: normalized,
-                executeTool: async (name, args) => {
-                    const result = await executeAnimeVerseTool(name, args);
-                    if (name !== "search_animeverse_knowledge") return result;
-                    const numbered = renumberKnowledgeResult(result, citationOffset);
-                    citationOffset = numbered.nextOffset;
-                    return numbered.result;
-                },
+                executeTool: executeAnimeVerseTool,
                 // Greetings/thanks are guaranteed to stay conversational: no
                 // catalogue tool is even exposed on those turns.
                 allowTools: likelyNeedsCatalog(latestQuestion),
             });
             const sources = collectToolSources(generated.toolEvents);
-            const citations = collectKnowledgeSources(generated.toolEvents);
             return {
                 answer: generated.answer,
                 provider: generated.provider,
                 sources,
-                citations,
                 usedCatalog: generated.toolEvents.length > 0,
                 grounded: generated.toolEvents.length > 0,
                 toolCalls: generated.toolEvents.length,
@@ -492,8 +444,6 @@ export function describeChatProvider() {
 
 export const animeAssistantInternals = {
     searchAnimeVerseCatalog,
-    searchAnimeVerseKnowledge,
     getAnimeVerseStats,
     collectToolSources,
-    collectKnowledgeSources,
 };

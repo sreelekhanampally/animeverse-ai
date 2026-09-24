@@ -34,7 +34,6 @@ import {
     speechRecognitionErrorMessage,
     stopSpeaking,
 } from "@/utils/browserVoice";
-import { citedSources } from "@/utils/ragCitations";
 
 const VOICE_LANGUAGE = "en-US";
 
@@ -238,7 +237,6 @@ export default function AiChatPage() {
                     content: answer,
                     provider: data?.provider,
                     usedCatalog: Boolean(data?.usedCatalog),
-                    citations: data?.citations || [],
                 },
             ]);
             setSources(data?.sources || []);
@@ -436,7 +434,6 @@ export default function AiChatPage() {
                             const label = assistant
                                 ? providerLabel(message.provider, message.usedCatalog)
                                 : "";
-                            const citations = assistant ? citedSources(message.content, message.citations) : [];
 
                             return (
                                 <div
@@ -459,30 +456,6 @@ export default function AiChatPage() {
                                         >
                                             {message.content}
                                         </div>
-
-                                        {citations.length > 0 && (
-                                            <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-3">
-                                                <p className="text-xs font-semibold text-white/80">Sources cited in this answer</p>
-                                                <div className="space-y-2">
-                                                    {citations.map((source) => {
-                                                        const link = source.videoId ? `/watch/${source.videoId}` : null;
-                                                        return (
-                                                            <div key={source.citationId} className="text-xs leading-relaxed text-muted">
-                                                                <div className="font-medium text-white/85">
-                                                                    <span className="mr-1.5 text-accent">[{source.citationId}]</span>
-                                                                    {link ? (
-                                                                        <Link to={link} className="hover:text-accent hover:underline">
-                                                                            {source.title || source.sourceType}
-                                                                        </Link>
-                                                                    ) : (source.title || source.sourceType)}
-                                                                </div>
-                                                                {source.excerpt && <p className="mt-1 line-clamp-2">{source.excerpt}</p>}
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        )}
 
                                         {assistant && !message.systemStarter && (
                                             <div className="flex items-center justify-between gap-3 px-2">

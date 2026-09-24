@@ -1,7 +1,7 @@
 {
   "name": "animeverse-ai-backend",
   "version": "1.0.0",
-  "description": "AnimeVerse AI backend — anime video + community platform with AI features",
+  "description": "AnimeVerse AI backend \u2014 anime video + community platform with AI features",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -22,11 +22,7 @@
     "catalog:audit:live": "node src/scripts/auditCatalogQuality.js --live",
     "catalog:quarantine": "node src/scripts/auditCatalogQuality.js --live --quarantine",
     "catalog:associations": "node src/scripts/auditCatalogAssociations.js",
-    "catalog:associations:apply": "node src/scripts/auditCatalogAssociations.js --apply",
-    "rag:index": "node src/scripts/buildRagIndex.js",
-    "rag:index:dry": "node src/scripts/buildRagIndex.js --dry-run",
-    "test:rag": "node --test tests/ragFoundation.test.mjs tests/ragEvaluation.test.mjs tests/ragCitationIds.test.mjs tests/ragEvidenceGate.test.mjs",
-    "rag:evaluate": "node src/scripts/evaluateRag.js"
+    "catalog:associations:apply": "node src/scripts/auditCatalogAssociations.js --apply"
   },
   "keywords": [
     "animeverse",

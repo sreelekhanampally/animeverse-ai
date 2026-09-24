@@ -2,28 +2,12 @@ const CHAT_SESSION_VERSION = 1;
 const CHAT_SESSION_PREFIX = "animeverse:ai-chat";
 const MAX_MESSAGES = 40;
 const MAX_SOURCES = 8;
-const MAX_CITATIONS = 10;
 
 const canUseSessionStorage = () =>
     typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 
 const cleanText = (value, maxLength = 8000) =>
     typeof value === "string" ? value.slice(0, maxLength) : "";
-
-const sanitizeCitations = (citations) => {
-    if (!Array.isArray(citations)) return [];
-    return citations
-        .filter((source) => source && /^AV[1-9]\d*$/.test(source.citationId || ""))
-        .slice(0, MAX_CITATIONS)
-        .map((source) => ({
-            citationId: cleanText(source.citationId, 24),
-            sourceType: cleanText(source.sourceType, 64),
-            title: cleanText(source.title, 300),
-            excerpt: cleanText(source.excerpt, 520),
-            animeId: cleanText(source.animeId, 128),
-            videoId: cleanText(source.videoId, 128),
-        }));
-};
 
 const sanitizeMessages = (messages) => {
     if (!Array.isArray(messages)) return [];
@@ -36,7 +20,6 @@ const sanitizeMessages = (messages) => {
             provider: cleanText(message.provider, 120) || undefined,
             usedCatalog: Boolean(message.usedCatalog),
             systemStarter: Boolean(message.systemStarter),
-            citations: message.role === "assistant" ? sanitizeCitations(message.citations) : [],
         }))
         .filter((message) => message.content.trim())
         .slice(-MAX_MESSAGES);
