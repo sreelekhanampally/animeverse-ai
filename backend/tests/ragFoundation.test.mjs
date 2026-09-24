@@ -22,7 +22,7 @@ test("chunkText keeps long knowledge in bounded overlapping chunks", () => {
 
     const chunks = chunkText(text, { maxChars: 220, overlapChars: 40 });
     assert.ok(chunks.length > 2);
-    assert.ok(chunks.every((chunk) => chunk.length <= 260));
+    assert.ok(chunks.every((chunk) => chunk.length <= 220));
     assert.match(chunks[0], /Sentence 1/);
 });
 
