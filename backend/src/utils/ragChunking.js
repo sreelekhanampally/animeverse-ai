@@ -77,7 +77,8 @@ export function chunkText(
         const previous = clean(current);
         pushCurrent();
         const overlap = previous.slice(Math.max(0, previous.length - overlapChars)).trim();
-        current = clean(overlap ? `${overlap} ${sentence}` : sentence);
+        const withOverlap = clean(overlap ? `${overlap} ${sentence}` : sentence);
+        current = withOverlap.length <= maxChars ? withOverlap : sentence;
     }
 
     if (current) pushCurrent();
