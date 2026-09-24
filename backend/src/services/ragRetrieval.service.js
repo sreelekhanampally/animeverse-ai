@@ -72,7 +72,7 @@ const lexicalCandidates = async (query, filter) => {
             ...filter,
             $text: { $search: query },
         })
-            .select(`${PUBLIC_FIELDS} ${EMBEDDING_FIELDS} mongoTextScore`)
+            .select(PUBLIC_FIELDS)
             .select({ mongoTextScore: { $meta: "textScore" } })
             .sort({ mongoTextScore: { $meta: "textScore" } })
             .limit(80)
