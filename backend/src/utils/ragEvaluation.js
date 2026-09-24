@@ -8,6 +8,8 @@ export const RAG_EVAL_CASES = [
     { query: "a microwave sends messages into the past", title: /steins;gate/i },
     { query: "a boy protects his demon sister", title: /demon slayer/i },
     { query: "AnimeVerse quarterly revenue in 2042", absent: true },
+    { query: "current weather forecast for Pune tomorrow", absent: true },
+    { query: "How do I reset my bank PIN?", absent: true },
 ];
 
 export function scoreRagCases(cases, results, k = 3) {
@@ -26,6 +28,7 @@ export function scoreRagCases(cases, results, k = 3) {
             hit,
             evidenceValid,
             returned: sources.length,
+            abstained: Boolean(results[index]?.diagnostics?.abstained),
             topTitles: top.map((source) => source.title),
         };
     });

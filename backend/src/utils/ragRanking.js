@@ -97,4 +97,10 @@ export function rerankRagResults(query, fused = []) {
         });
 }
 
+// A vector neighbour alone is not evidence for a factual answer. In particular,
+// unrelated questions can have a higher cosine score than a correct paraphrase.
+// Require at least one non-stopword query token in the selected context.
+export const hasRagEvidence = (selected = []) =>
+    selected.some((entry) => Number(entry.lexicalScore) > 0);
+
 export const ragRankingInternals = { clamp01 };

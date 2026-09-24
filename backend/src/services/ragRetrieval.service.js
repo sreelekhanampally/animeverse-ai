@@ -8,7 +8,7 @@ import {
     generateEmbedding,
     isSearchableEmbedding,
 } from "./embedding.service.js";
-import { fuseRankings, rerankRagResults } from "../utils/ragRanking.js";
+import { fuseRankings, hasRagEvidence, rerankRagResults } from "../utils/ragRanking.js";
 import { RAG_INDEX_VERSION } from "../utils/ragChunking.js";
 
 const EMBEDDING_FIELDS =
@@ -188,7 +188,10 @@ export async function retrieveRagContext(
         if (selected.length >= safeLimit) break;
     }
 
-    const sources = selected.map((entry, index) => publicResult(entry, `AV${index + 1}`));
+    const evidenceFound = hasRagEvidence(selected);
+    const sources = (evidenceFound ? selected : []).map((entry, index) =>
+        publicResult(entry, `AV${index + 1}`)
+    );
     const context = buildRagContext(sources, { maxChars: maxContextChars, maxPerSource: 2 });
 
     return {
@@ -201,6 +204,8 @@ export async function retrieveRagContext(
             vectorCandidates: vector.length,
             lexicalCandidates: lexical.length,
             fusedCandidates: fused.length,
+            abstained: selected.length > 0 && !evidenceFound,
+            evidencePolicy: "lexical-anchor-in-selected-context",
             returned: sources.length,
             filtersApplied: Object.keys(filter).filter((key) => key !== "indexVersion"),
         },
