@@ -1,199 +1,63 @@
 # AnimeVerse AI
 
-AnimeVerse started as a MERN video platform and slowly turned into a place where I could experiment with search, recommendations, creator workflows, and RAG without building a separate demo for every idea.
+**AI-native anime video discovery, creator, and community platform built with React, Express, MongoDB, local semantic embeddings, and a tool-using conversational assistant.**
 
-The main problem I wanted to solve was simple: sometimes you remember a scene, character, mood, or plot detail, but not the exact anime or video title. AnimeVerse lets you search for that idea in natural language and uses the catalogue itself as context for discovery and chat.
+AnimeVerse helps people find anime-related videos even when they do not remember the exact title. Users can search by character, theme, plot fragment, mood, or story detail; explore semantically related videos; build dynamic collections; ask an anime assistant questions; and interact with a community around the catalogue.
 
-**Live app:** https://animeverse-nsree.vercel.app/
+> AnimeVerse is **not a full-episode streaming service**. Its catalogue is built around anime trailers, promos, openings, endings, clips, music videos, and creator uploads. External YouTube videos are stored as metadata + video IDs and played through embeds. They are never downloaded or re-hosted.
 
-> AnimeVerse is not a full-episode streaming service. The catalogue contains trailers, promos, openings, endings, official clips, music videos, and creator uploads. YouTube videos are stored as metadata and video IDs and are played through embeds. They are not downloaded or re-hosted.
+## Current snapshot
 
----
+Latest local catalogue/test snapshot used for this README:
 
-## What works right now
+| Metric | Current state |
+| --- | ---: |
+| Anime documents | **231** |
+| Published YouTube videos | **1,907** |
+| Searchable YouTube embeddings | **1,907 / 1,907 (100%)** |
+| Anime metadata sources | **167 AniList + 64 curated fallback** |
+| Video embedding model | **sentence-transformers/all-MiniLM-L6-v2** |
+| Embedding width | **384 dimensions** |
+| Automated backend tests | **235** |
+| Passing | **228** |
+| Failing | **0** |
+| Skipped optional/live-model tests | **7** |
 
-- Natural-language anime and video search
-- Local semantic embeddings with `all-MiniLM-L6-v2`
-- Hybrid retrieval using semantic, anime metadata, and lexical signals
-- RAG-based knowledge retrieval for the AI assistant
-- Gemini-powered conversational assistant with catalogue tools
-- Similar-video recommendations and discovery collections
-- Personalized suggestions using likes, history, and Watch Later
-- YouTube embeds and Cloudinary creator uploads
-- Creator dashboard with edit, delete, and publish controls
-- Channels, subscriptions, comments, playlists, likes, and history
-- Community posts, replies, polls, and voting
-- Voice input and browser text-to-speech
-- Catalogue ingestion and quality-audit scripts
-- Health checks, structured logs, rate limits, and graceful shutdown
+Catalogue size is deliberately **not** the quality target. The ingestion pipeline now audits entity association, duplicate titles, content mix, embedding health, source availability, and high-confidence false matches before growth is considered successful.
 
 ---
 
-## Screenshots
+## Product walkthrough
 
 ### Home
 
+The home feed combines catalogue browsing, platform statistics, personalized shelves, creator content, history, likes, Watch Later signals, and community activity.
+
 ![AnimeVerse home](docs/screenshots/home.png)
 
-### AI Search
+### Natural-language AI Search
 
-A query does not need to contain the exact anime title. For example:
-
-```text
-two brothers using alchemy to restore their bodies
-```
+Search does not require an exact title. A query such as `two brothers using alchemy to restore their bodies` is embedded locally and ranked against AnimeVerse video + anime metadata.
 
 ![AnimeVerse AI Search](docs/screenshots/ai-search.png)
 
 ### Discovery Lab
 
+Users can build a collection around a theme, mood, genre, or style and then move through related results using the same semantic layer.
+
 ![AnimeVerse Discovery Lab](docs/screenshots/discovery-lab.png)
 
-### AI Companion
+### AI Companion + voice
+
+The assistant can answer general anime questions and, when needed, call AnimeVerse catalogue tools to search real stored videos or platform statistics. Voice input and browser text-to-speech sit on top of the same conversation flow.
 
 ![AnimeVerse AI Companion](docs/screenshots/ai-companion.png)
 
 ### Community
 
+Community posts support deep links, discussions, replies, polls, upvotes, filters, and user-profile navigation. Poll selections and reactions persist as real account state rather than decorative UI.
+
 ![AnimeVerse Community](docs/screenshots/community.png)
-
----
-
-## RAG and search
-
-The first version of AnimeVerse search was mostly metadata and title based. That worked for obvious queries, but it was weak when the user only remembered a description or story detail.
-
-I added a semantic retrieval layer and later connected it to the assistant as a grounded RAG tool.
-
-The current flow is roughly:
-
-```text
-User query
-   |
-   v
-Local MiniLM embedding
-   |
-   +--> video embedding similarity
-   +--> linked anime similarity
-   +--> lexical/title/character signal
-   |
-   v
-Hybrid ranking
-   |
-   v
-Relevant catalogue chunks/results
-   |
-   v
-Gemini assistant when a grounded answer is needed
-```
-
-The RAG foundation includes indexing, bounded chunking, retrieval routes, grounded knowledge retrieval, and assistant tool integration.
-
-I kept the embedding layer local because an earlier OpenAI embedding backfill hit API-credit limits. Moving to `sentence-transformers/all-MiniLM-L6-v2` made indexing predictable and removed the per-document embedding cost.
-
-Embeddings are stored with metadata such as model, dimensions, version, generation time, and source-text hash so stale or incompatible vectors can be detected instead of silently mixed.
-
----
-
-## Assistant design
-
-The assistant does not query the database for every message.
-
-For normal anime conversation, the configured LLM can answer directly. When the request needs AnimeVerse-specific information, the assistant can call catalogue tools such as search or platform statistics.
-
-```text
-User message
-    |
-    v
-Does this need AnimeVerse data?
-    |
-    +---- no ----> conversational response
-    |
-    +---- yes ---> catalogue/RAG tool
-                       |
-                       v
-                  MongoDB retrieval
-                       |
-                       v
-                  grounded context
-                       |
-                       v
-                    Gemini
-```
-
-There are also fallback paths for provider failures. Local retrieval remains usable even if the conversational provider is unavailable.
-
-The assistant is intentionally not allowed to claim that it watched a YouTube video or knows an exact scene timestamp when that information is not present in the stored metadata.
-
----
-
-## Catalogue pipeline
-
-AnimeVerse uses AniList, Jikan fallback data, reviewed metadata, and the YouTube Data API to build the catalogue.
-
-A simplified ingestion flow is:
-
-```text
-Anime metadata
-    |
-    v
-YouTube search
-    |
-    v
-availability / embeddability checks
-    |
-    v
-content + entity filters
-    |
-    v
-deduplication
-    |
-    v
-MongoDB
-    |
-    v
-embedding backfill
-    |
-    v
-quality audit
-```
-
-One surprisingly annoying problem was title collision. A trusted source can still return the wrong entity. Examples I added regression coverage for include:
-
-- `D.Gray-man` vs `The Gray Man`
-- `Tokyo Ghoul` vs `Ghoul`
-- `The Promised Neverland` vs `Finding Neverland`
-- `Chainsaw Man` vs `Texas Chainsaw Massacre`
-- `My Dress-Up Darling` vs `DARLING in the FRANXX`
-
-For ambiguous matches, the audit flow prefers review over destructive deletion. High-confidence bad matches can be unpublished by setting `isPublished=false`.
-
----
-
-## Video sources
-
-AnimeVerse supports two video paths.
-
-### Creator uploads
-
-```text
-upload
- -> Multer
- -> Cloudinary
- -> sourceType = "cloudinary"
- -> HTML5 video player
-```
-
-### YouTube catalogue videos
-
-```text
-YouTube Data API metadata
- -> externalVideoId
- -> sourceType = "youtube"
- -> youtube-nocookie.com embed
-```
-
-Playback is selected from `sourceType`, not from who owns the video record.
 
 ---
 
@@ -201,67 +65,459 @@ Playback is selected from `sourceType`, not from who owns the video record.
 
 ```mermaid
 flowchart LR
-    U[React 19 client] --> API[Express 5 API]
+    U[Browser / React 19] -->|REST + JWT cookies| API[Express 5 API]
 
-    API --> AUTH[Auth and users]
-    API --> VIDEO[Videos and creators]
+    API --> AUTH[Auth / Users]
+    API --> VIDEO[Video + Creator services]
     API --> COMM[Community]
-    API --> AI[Search / RAG / assistant]
+    API --> AI[AI orchestration]
 
     AUTH --> DB[(MongoDB Atlas)]
     VIDEO --> DB
     COMM --> DB
     AI --> DB
 
-    VIDEO --> CLOUD[Cloudinary]
+    VIDEO --> CLOUD[Cloudinary\ncreator uploads]
 
-    INGEST[Ingestion scripts] --> ANILIST[AniList]
-    INGEST --> JIKAN[Jikan]
-    INGEST --> YT[YouTube Data API]
+    INGEST[Internal ingestion CLI] --> ANILIST[AniList]
+    INGEST --> JIKAN[Jikan fallback]
+    INGEST --> CURATED[Reviewed offline metadata]
+    INGEST --> YTAPI[YouTube Data API v3]
     INGEST --> DB
 
-    AI --> EMB[Local MiniLM embeddings]
-    AI --> GEMINI[Gemini]
+    AI --> EMB[Local MiniLM\n384-d embeddings]
+    AI --> GEMINI[Gemini provider]
+    GEMINI --> TOOLS[AnimeVerse tools]
+    TOOLS --> AI
 
-    U --> YTEMBED[youtube-nocookie.com]
+    U -->|YouTube external video ID| YTEMBED[youtube-nocookie.com]
+    U -->|Creator media| CLOUD
 ```
+
+### Source-aware video architecture
+
+```text
+Creator upload
+    -> Multer
+    -> Cloudinary
+    -> sourceType = "cloudinary"
+    -> HTML5 <video>
+
+YouTube ingestion
+    -> YouTube Data API v3 metadata
+    -> externalVideoId only
+    -> sourceType = "youtube"
+    -> youtube-nocookie.com iframe
+```
+
+The owner of a video never determines playback type. `sourceType` does.
+
+---
+
+## Semantic retrieval pipeline
+
+```mermaid
+flowchart LR
+    Q[User query] --> E[MiniLM embedding\n384 dimensions]
+    E --> C[Published candidate videos]
+    C --> VS[Video cosine similarity]
+    C --> AS[Linked anime similarity]
+    Q --> LX[Lexical/title/character signal]
+    VS --> R[Hybrid ranker]
+    AS --> R
+    LX --> R
+    R --> WHY[Human-readable match reasons]
+    WHY --> UI[Search / collections / recommendations]
+```
+
+The current ranking layer combines semantic video similarity, linked-anime context, and a secondary lexical signal. It intentionally avoids an arbitrary hard similarity floor because valid niche matches can have lower cosine values than obvious title matches.
+
+Embeddings are stored with provenance metadata including model, dimension count, version, generation time, and source-text hash. Incompatible or stale vectors are excluded rather than silently mixed.
+
+---
+
+## AI Companion: provider + tool strategy
+
+```mermaid
+flowchart TD
+    M[User message] --> INTENT{Needs AnimeVerse data?}
+    INTENT -->|No| LLM[Conversational provider]
+    INTENT -->|Yes| LLM
+    LLM -->|tool call| SEARCH[search_animeverse_catalog]
+    LLM -->|tool call| STATS[get_animeverse_stats]
+    SEARCH --> DB[(MongoDB + semantic retrieval)]
+    STATS --> DB
+    DB --> LLM
+    LLM --> RESP[Grounded response]
+
+    LLM -. provider failure .-> FAILOVER[Fallback model]
+    FAILOVER -. unavailable .-> LOCAL[Local retrieval response]
+
+    CB[Gemini circuit breaker\nclosed / open / half-open] --> LLM
+```
+
+Key properties:
+
+- Gemini is the conversational provider when configured.
+- Model failover can move through configured Gemini fallback models.
+- A circuit breaker stops repeatedly calling an unhealthy provider after consecutive failures.
+- The assistant only exposes catalogue tools when the request actually needs AnimeVerse data.
+- Local semantic retrieval remains available even without a paid embedding API.
+- Retrieved catalogue text is treated as untrusted data in the assistant system prompt.
+- The assistant does **not** claim to have watched YouTube media or know exact scene timestamps.
+
+---
+
+## AI Evaluation & observability
+
+`/ai/evaluation` is a real engineering dashboard rather than a marketing screen.
+
+It reports:
+
+- video and anime embedding coverage
+- embedding model/version/dimensions
+- request counts and failure counts
+- success rate by AI operation
+- p50 and p95 latency
+- observed assistant provider usage
+- catalogue tool-call counts
+- Gemini circuit-breaker state
+- an 8-query retrieval benchmark with **Top-1, Recall@5, MRR, p50, and p95**
+
+Benchmark values are generated from the live catalogue and are intentionally **not hard-coded into this README**, because they change as the catalogue is cleaned and expanded.
+
+### Automated test evidence
+
+Latest full backend run:
+
+```text
+235 tests
+228 passed
+0 failed
+7 skipped
+```
+
+The suite includes semantic ranking, embedding compatibility, AI routing, provider fallbacks, circuit breaking, production hardening, community interactions, catalogue quality, source filters, entity resolution, and regression tests for real ingestion failures such as:
+
+- `D.Gray-man` vs **The Gray Man**
+- `Tokyo Ghoul` vs **Ghoul**
+- `The Promised Neverland` vs **Finding Neverland**
+- `Chainsaw Man` vs **Texas Chainsaw Massacre**
+- `My Dress-Up Darling` vs **DARLING in the FRANXX**
+- `Made in Abyss` vs **Kaiju No. 8**
+- `Samurai Champloo` vs **Blue Eye Samurai**
+
+---
+
+## Catalogue quality pipeline
+
+AnimeVerse treats catalogue quality as a pipeline, not a one-time seed script.
+
+```mermaid
+flowchart LR
+    META[AniList / Jikan / curated metadata] --> QUERY[YouTube search queries]
+    QUERY --> AVAIL[Availability + embeddability]
+    AVAIL --> SAFETY[Content quality filters]
+    SAFETY --> ENTITY[Anime entity association]
+    ENTITY --> DEDUPE[ID + title fingerprint dedupe]
+    DEDUPE --> MIX[Content-mix selection]
+    MIX --> SAVE[(MongoDB)]
+    SAVE --> EMB[Embedding backfill]
+    EMB --> AUDIT[Offline/live quality audit]
+    AUDIT -->|high-confidence failure| QUAR[Reversible quarantine]
+    AUDIT -->|ambiguous| REVIEW[Human review bucket]
+```
+
+Quality checks include:
+
+- deleted/private/non-embeddable YouTube videos
+- duplicate external IDs and title fingerprints
+- fake/concept trailers, reactions, recaps, AMVs, edits, game crossovers and unrelated live-action content
+- title/entity collisions between similar names
+- missing or stale embeddings
+- under-covered and over-filled anime
+- trailer-heavy content concentration
+- metadata drift during live YouTube revalidation
+
+Ambiguous entity matches are **not** auto-deleted. Only high-confidence failures are safe-quarantined by setting `isPublished=false`.
+
+---
+
+## Main product features
+
+### Discovery
+
+- natural-language semantic video search
+- hybrid semantic + anime metadata + lexical ranking
+- explainable match reasons
+- **More like this** on the Watch page
+- semantic related-video map
+- dynamic Discovery Lab collections
+- personalized recommendations from history, likes, and Watch Later
+
+### Assistant
+
+- general anime conversation
+- AnimeVerse catalogue search tools
+- live platform-statistics tool
+- spoiler-aware prompt design
+- Gemini model failover
+- local fallback path
+- browser voice input and text-to-speech
+- persistent per-user browser-session chat state
+
+### Video platform
+
+- YouTube external embeds
+- Cloudinary creator uploads
+- upload progress/cancel/retry
+- creator dashboard
+- edit/delete/publish controls
+- channel pages and subscriptions
+- likes, comments, playlists, history and Watch Later
+
+### Community
+
+- discussions, news posts, polls and memes
+- deep-linked post pages
+- replies and reply-to-reply flows
+- persistent upvotes and poll selections
+- profile navigation
+- account-scoped reaction state
+
+---
+
+## Production hardening
+
+The backend includes production-oriented behavior normally absent from portfolio demos:
+
+- structured JSON logs
+- request IDs exposed through `X-Request-ID`
+- centralized error handling
+- request/application/server timeouts
+- dedicated AI rate limits
+- liveness and readiness endpoints
+- environment/deployment validation
+- MongoDB connection/pool timeouts
+- Gemini circuit breaker
+- graceful `SIGTERM` / `SIGINT` shutdown with Mongo disconnect
+- secret redaction from logs and public error responses
+
+Health probes:
+
+```http
+GET /api/v1/healthcheck/live
+GET /api/v1/healthcheck/ready
+```
+
+Deployment checks:
+
+```bash
+npm run deploy:check
+npm run deploy:check:db
+```
+
+---
+
+## Cost strategy
+
+AnimeVerse was designed so the core discovery experience does not depend on an expensive AI API.
+
+| Component | Strategy |
+| --- | --- |
+| Semantic embeddings | Local `all-MiniLM-L6-v2`, 384-d, in-process via Transformers.js/ONNX |
+| Semantic search | MongoDB metadata + in-process cosine ranking |
+| Conversational AI | Configurable Gemini provider with model failover and local emergency fallback |
+| Voice | Browser Speech Recognition / Speech Synthesis, no dedicated speech backend |
+| YouTube | Data API metadata + external IDs only; media is never copied |
+| Creator media | Cloudinary only for user-uploaded content |
+| Optional OpenAI code | Legacy/optional routes only; not required for the main semantic search path |
+
+This keeps the search layer usable with **zero per-query embedding API cost** and allows the chat layer to degrade gracefully if the configured LLM provider is unavailable.
+
+---
+
+## Engineering decisions
+
+### Why local embeddings?
+
+The first OpenAI embedding backfill hit API-credit limits. AnimeVerse moved the core search path to `sentence-transformers/all-MiniLM-L6-v2`, giving deterministic 384-dimensional vectors with no key, rate limit, or per-document charge.
+
+### Why not download YouTube media?
+
+YouTube-backed catalogue items are external sources. AnimeVerse persists metadata and video IDs only and uses privacy-enhanced embeds. Transcription is restricted to legitimate creator-uploaded local files.
+
+### Why not let “official channel” imply relevance?
+
+A trusted uploader can still return the wrong entity. A real Netflix trailer for **The Gray Man** is still wrong for `D.Gray-man`. Entity resolution is therefore a separate quality gate after source trust.
+
+### Why conservative quarantine?
+
+Anime/franchise naming is messy. False deletion is worse than a review queue. High-confidence collisions can be unpublished automatically; ambiguous franchise/title relationships remain visible in audit reports for review.
+
+### Why Mongo/in-process retrieval instead of a dedicated vector DB?
+
+At the current low-thousands catalogue size, local embeddings plus MongoDB keep infrastructure simple and make the system easy to run. `VECTOR_PROVIDER` is already isolated so a dedicated ANN/vector index can be introduced when corpus size or latency justifies it.
+
+### Why keep AI evaluation inside the product?
+
+The goal is to measure retrieval behavior, latency, provider health and fallback behavior continuously instead of judging the system from a few hand-picked prompts.
 
 ---
 
 ## Tech stack
 
-### Frontend
+**Frontend**
 
 - React 19
 - Vite 5
-- React Router
+- React Router 6
 - TanStack Query
 - Zustand
 - Tailwind CSS
 - Framer Motion
 - Recharts
+- Lucide React
 
-### Backend
+**Backend**
 
-- Node.js
-- Express 5
+- Node.js / Express 5
 - MongoDB / Mongoose
-- JWT access and refresh authentication
+- JWT access + refresh authentication
 - bcrypt
-- Helmet
-- CORS
-- rate limiting
+- Helmet / CORS / rate limiting
 - Multer
 - Cloudinary
 
-### AI and data
+**AI / data**
 
 - `@huggingface/transformers`
 - `sentence-transformers/all-MiniLM-L6-v2`
-- Gemini Developer API
-- AniList
-- Jikan
+- Gemini Developer API provider
+- optional Ollama fallback
+- AniList + Jikan + reviewed offline metadata
 - YouTube Data API v3
+
+---
+
+## Local setup
+
+### 1. Clone
+
+```bash
+git clone https://github.com/sreelekhanampally
+cd animeverse-ai
+```
+
+### 2. Backend
+
+```bash
+cd backend
+npm install
+```
+
+Create `backend/.env` from `backend/.env.sample` and set at minimum:
+
+```env
+PORT=8000
+NODE_ENV=development
+CORS_ORIGIN=http://localhost:5173
+
+MONGODB_URI=...
+ACCESS_TOKEN_SECRET=...
+REFRESH_TOKEN_SECRET=...
+
+# Optional for creator uploads
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+
+# Optional for conversational AI; semantic search works without it
+GEMINI_API_KEY=...
+ANIME_CHAT_PROVIDER=auto
+
+# Needed only for YouTube ingestion/audits that call YouTube
+YOUTUBE_API_KEY=...
+
+EMBEDDING_PROVIDER=local
+```
+
+Start the API:
+
+```bash
+npm run dev
+```
+
+The first local embedding run may download the MiniLM model into `backend/.model-cache/`. Subsequent use is local.
+
+### 3. Frontend
+
+```bash
+cd ../frontend
+npm install
+```
+
+Create `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:8000/api/v1
+```
+
+Run:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173`.
+
+---
+
+## Useful commands
+
+```bash
+# Tests
+cd backend
+npm test
+
+# Embeddings
+npm run backfill:embeddings
+
+# Catalogue quality
+npm run catalog:audit
+npm run catalog:audit:live
+npm run catalog:quarantine
+npm run catalog:associations
+npm run catalog:associations:apply
+
+# Quality-first catalogue growth
+npm run grow:catalog -- --metadata-provider=stored --quality-first
+
+# Deployment validation
+npm run deploy:check
+npm run deploy:check:db
+```
+
+`catalog:associations:apply` and `catalog:quarantine` are intentionally separate from dry-run audit commands. Review generated reports before applying catalogue changes.
+
+---
+
+## API highlights
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/ai/semantic-search` | natural-language hybrid search |
+| `POST` | `/api/v1/ai/chat` | AnimeVerse Assistant |
+| `GET` | `/api/v1/ai/recommendations` | personalized recommendations |
+| `GET` | `/api/v1/ai/videos/:videoId/similar` | semantic neighbors |
+| `GET` | `/api/v1/ai/videos/:videoId/graph` | related-video graph |
+| `POST` | `/api/v1/ai/collections` | dynamic semantic collections |
+| `GET` | `/api/v1/ai/evaluation` | evaluation/observability snapshot |
+| `POST` | `/api/v1/ai/evaluation/run` | live retrieval benchmark |
+| `GET` | `/api/v1/healthcheck/live` | process liveness |
+| `GET` | `/api/v1/healthcheck/ready` | traffic readiness |
+
+The application also exposes authenticated APIs for users, videos, channels, subscriptions, likes, comments, playlists, Watch Later, creator dashboard, community posts and community replies.
 
 ---
 
@@ -297,148 +553,27 @@ animeverse-ai/
 
 ---
 
-## Running locally
+## Known boundaries
 
-### Clone
-
-```bash
-git clone https://github.com/sreelekhanampally/animeverse-ai.git
-cd animeverse-ai
-```
-
-### Backend
-
-```bash
-cd backend
-npm install
-```
-
-Create `backend/.env` from `backend/.env.sample`.
-
-A minimal development configuration looks like:
-
-```env
-PORT=8000
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:5173
-
-MONGODB_URI=...
-ACCESS_TOKEN_SECRET=...
-REFRESH_TOKEN_SECRET=...
-
-GEMINI_API_KEY=...
-ANIME_CHAT_PROVIDER=auto
-
-EMBEDDING_PROVIDER=local
-```
-
-Cloudinary credentials are needed for creator uploads, and a YouTube API key is needed for ingestion scripts that call YouTube.
-
-Run the API:
-
-```bash
-npm run dev
-```
-
-The MiniLM model may be downloaded the first time embeddings are generated. Later runs use the local model cache.
-
-### Frontend
-
-```bash
-cd ../frontend
-npm install
-```
-
-Create `frontend/.env`:
-
-```env
-VITE_API_URL=http://localhost:8000/api/v1
-```
-
-Then:
-
-```bash
-npm run dev
-```
+- Semantic understanding of external YouTube items is based on persisted metadata, linked anime metadata, and embeddings. AnimeVerse does not inspect YouTube frames/audio or claim exact scene timestamps.
+- Some offline-curated anime rows intentionally contain sparse metadata rather than fabricated descriptions or genres.
+- Ambiguous anime/video title associations remain in a manual-review bucket instead of being auto-unpublished.
+- The current retrieval architecture is intentionally simple for a low-thousands corpus; a dedicated vector index becomes appropriate as the catalogue grows substantially.
+- Browser speech-recognition support varies by browser. Text chat remains fully usable when voice input is unavailable.
 
 ---
+# 📜 License
 
-## Useful backend commands
-
-```bash
-# test suite
-npm test
-
-# embeddings / indexing
-npm run backfill:embeddings
-
-# catalogue checks
-npm run catalog:audit
-npm run catalog:audit:live
-
-# deployment validation
-npm run deploy:check
-npm run deploy:check:db
-```
-
-Some catalogue scripts can modify publication state, so I keep audit and apply steps separate instead of automatically changing data during every check.
+This project is licensed under the **MIT License**.
 
 ---
-
-## API highlights
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `POST` | `/api/v1/ai/semantic-search` | natural-language search |
-| `POST` | `/api/v1/ai/chat` | AnimeVerse assistant |
-| `GET` | `/api/v1/ai/recommendations` | personalized recommendations |
-| `GET` | `/api/v1/ai/videos/:videoId/similar` | similar videos |
-| `GET` | `/api/v1/ai/videos/:videoId/graph` | related-video graph |
-| `POST` | `/api/v1/ai/collections` | dynamic semantic collections |
-| `GET` | `/api/v1/ai/evaluation` | AI and retrieval metrics |
-| `GET` | `/api/v1/healthcheck/live` | liveness |
-| `GET` | `/api/v1/healthcheck/ready` | readiness |
-
-The app also has APIs for users, channels, videos, subscriptions, likes, comments, playlists, history, Watch Later, creator tools, community posts, and replies.
-
----
-
-## A few engineering choices
-
-**Why local embeddings?**  
-They are cheap, reproducible, and the catalogue does not need an external embedding request every time it is indexed.
-
-**Why not use a vector database yet?**  
-The current corpus is still small enough that MongoDB plus in-process cosine ranking keeps the system easy to run. The retrieval provider is isolated so this can be changed later if the catalogue grows enough to justify ANN search.
-
-**Why keep YouTube as embeds?**  
-AnimeVerse only needs the metadata and video ID for external catalogue items. Creator-owned uploads use Cloudinary separately.
-
-**Why keep a quality audit pipeline?**  
-Growing the catalogue is easy. Growing it without filling search results with wrong anime, duplicate trailers, reactions, edits, or unrelated videos is the harder part.
-
----
-
-## Current limitations
-
-- External YouTube understanding is based on stored metadata and linked anime information. AnimeVerse does not inspect arbitrary YouTube frames or audio.
-- Some catalogue records have sparse metadata rather than generated descriptions.
-- Ambiguous anime/video associations may stay in a review bucket instead of being automatically removed.
-- Browser speech recognition support varies by browser.
-- The current retrieval implementation favors simplicity for a low-thousands corpus over adding a separate vector database too early.
-
----
-
-## License
-
-MIT
 
 ## Author
 
 **Sreelekha Nampally**
 
-Full-stack developer exploring AI engineering, retrieval systems, and product development.
+Full-Stack Developer and aspiring AI/ML Engineer.
 
-- GitHub: [@sreelekhanampally](https://github.com/sreelekhanampally)
-- LinkedIn: [sreelekha-nampally](https://www.linkedin.com/in/sreelekha-nampally)
-- Email: sreelekhanampally27@gmail.com
+* GitHub: [@sreelekhanampally](https://github.com/sreelekhanampally)
+* LinkedIn: [sreelekha-nampally](https://www.linkedin.com/in/sreelekha-nampally)
+* Email: sreelekhanampally27@gmail.com
